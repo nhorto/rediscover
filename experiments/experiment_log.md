@@ -66,3 +66,17 @@ EXPECTED IMPACT: Linear attention reduces the memory complexity from O(N²) to O
 **Cost this cycle:** $0.2454
 **Cumulative cost:** $0.8091
 ---
+
+## Experiment 2 — 2026-03-17 19:27:54
+**Hypothesis:** Implementing Linear Log-Normal Attention will reduce the memory complexity of the attention mechanism while maintaining or slightly improving val_bpb.
+**Approach:** 1. Replace the standard softmax attention mechanism in the CausalSelfAttention class with Linear Log-Normal Attention as described in the paper "Linear Log-Normal Attention with Unbiased Concentration".
+2. Specifically, modify the attention calculation to use the log-normal distribution for attention weights, which can be computed in linear time.
+3. Update the forward pass of the CausalSelfAttention class to implement the log-normal attention mechanism.
+4. Ensure the new attention mechanism integrates seamlessly with the rest of the model components like RoPE positional encoding, RMSNorm, and the ReLU squared MLP activation.
+**Papers consulted:** Long Short-Term Attention, FLuRKA: Fast and accurate unified Low-Rank & Kernel Attentio, Linear Log-Normal Attention with Unbiased Concentration
+**Critique:** The proposal to implement Linear Log-Normal Attention has potential merit, especially for reducing memory complexity in larger models. However, the recent experimental crashes and the small scale of t
+**Plan:** This experiment implements Linear Log-Normal Attention in the CausalSelfAttention class to reduce memory complexity while maintaining or slightly improving val_bpb, and addresses stability concerns and integration within the existing training framework.
+**Result:** val_bpb=CRASH (crash)
+**Cost this cycle:** $0.3874
+**Cumulative cost:** $0.6182
+---

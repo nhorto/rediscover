@@ -118,7 +118,11 @@ CRITICAL RULES:
 3. The output format (print statements at the end with val_bpb:, training_seconds:, etc.) must NOT change.
 4. The imports section must work — do not import packages that aren't installed.
 5. Keep the training loop structure intact — the time-based budget system must still work.
-6. Test your logic mentally: will tensor shapes match? Are dimensions consistent?"""
+6. Test your logic mentally: will tensor shapes match? Are dimensions consistent?
+
+MOST COMMON MISTAKE: Do NOT rewrite CausalSelfAttention from scratch. The existing class has
+a specific __init__(self, config, layer_idx) and forward(self, x, ve, cos_sin, window_size) interface
+that the rest of the code depends on. Modify the INTERNALS of these methods, do not change their signatures."""
 
 IMPLEMENT_PROMPT = """## Implementation Plan
 {plan_text}
@@ -126,16 +130,28 @@ IMPLEMENT_PROMPT = """## Implementation Plan
 ## Code Structure (DO NOT break these interfaces)
 {code_structure}
 
+## CRITICAL: CausalSelfAttention Interface (DO NOT CHANGE)
+The existing CausalSelfAttention class has this interface that MUST be preserved:
+- __init__(self, config, layer_idx) — receives GPTConfig and layer index
+- forward(self, x, ve, cos_sin, window_size) — receives:
+  - x: [B, T, C] input tensor
+  - ve: [B, T, n_kv_head * head_dim] value embeddings (or None)
+  - cos_sin: tuple of (cos, sin) for rotary embeddings
+  - window_size: tuple for sliding window attention
+- The Block class calls: self.attn(norm(x), ve, cos_sin, window_size)
+- You may modify what happens INSIDE forward(), but the signature must stay the same.
+
 ## Current train.py (COMPLETE FILE — modify and return the full file)
 ```python
 {train_py}
 ```
 
-Apply the changes described in the plan. Focus your modifications on the CausalSelfAttention class
-and related attention code. Keep everything else EXACTLY as-is unless the plan requires changing it.
+Apply the changes described in the plan. Modify the INTERNALS of CausalSelfAttention.forward()
+and/or __init__(). Do NOT change the method signatures. Keep everything else EXACTLY as-is.
 
 RULES:
 - Return the COMPLETE modified train.py file
+- Do not change class/method signatures (especially CausalSelfAttention.__init__ and forward)
 - Do not add new import dependencies beyond what is already imported
 - Do not change TIME_BUDGET, evaluation logic, or the output format at the end
 - Do not change the optimizer setup, training loop, or data loading
