@@ -1,0 +1,39 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.python-version
+*.egg-info/
+
+# UV
+.uv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Experiment artifacts (large files)
+experiments/data/
+experiments/checkpoints/
+*.pt
+*.pth
+*.bin
+
+# But track the experiment workspace files
+!experiments/train.py
+!experiments/prepare.py
+!experiments/program.md
+!experiments/results.tsv
+!experiments/experiment_log.md

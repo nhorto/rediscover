@@ -1,0 +1,47 @@
+[project]
+name = "rediscover"
+version = "0.1.0"
+description = "Autonomous ML research agents that propose and validate architectural innovations through retrodiction"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # Core ML
+    "torch>=2.2.0",
+    "tiktoken>=0.6.0",
+    "pyarrow>=15.0.0",
+    "requests>=2.31.0",
+    # Tokenizer (used by autoresearch prepare.py)
+    "rustbpe>=0.1.0",
+    # LLM API
+    "litellm>=1.30.0",
+    # Paper ingestion
+    "arxiv>=2.0.0",
+    "chromadb>=0.4.0",
+    "sentence-transformers>=2.5.0",
+    # LaTeX parsing
+    "pylatexenc>=2.10",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.4.0",
+    "pytest>=8.0.0",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["E501"]  # line length handled by formatter
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "unit: pure function tests (no I/O, no API)",
+    "integration: end-to-end pipeline tests",
+]

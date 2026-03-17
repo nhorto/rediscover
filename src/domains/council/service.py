@@ -1,0 +1,302 @@
+"""Council service: multi-agent deliberation pipeline for experiment proposals."""
+
+import re
+from datetime import datetime
+
+from src.domains.council.config import (
+    CRITIQUE_PROMPT,
+    CRITIQUE_SYSTEM,
+    IMPLEMENT_PROMPT,
+    IMPLEMENT_SYSTEM,
+    MAX_PAPERS_PER_QUERY,
+    MAX_SEARCH_QUERIES,
+    PROPOSE_PROMPT,
+    PROPOSE_SYSTEM,
+    REFINE_PROMPT,
+    REFINE_SYSTEM,
+    SCAN_PROMPT,
+    SCAN_SYSTEM,
+    extract_hyperparams,
+    format_papers_summary,
+    format_results_history,
+)
+from src.domains.council.types import (
+    CouncilResult,
+    Critique,
+    ExperimentPlan,
+    Proposal,
+    SearchQuery,
+)
+from src.domains.literature.service import LiteratureService
+from src.domains.literature.types import Paper
+from src.providers.llm import LLMProvider
+
+
+class CouncilService:
+    """Orchestrates the research council: scan → propose → critique → refine → implement."""
+
+    def __init__(self, llm: LLMProvider, literature: LiteratureService | None = None):
+        self.llm = llm
+        self.literature = literature
+
+    def run_council(
+        self,
+        train_py: str,
+        results_tsv: str,
+        program_md: str,
+    ) -> CouncilResult:
+        """Run a full council deliberation cycle. Returns a CouncilResult with new train.py."""
+        log: list[dict] = []
+
+        # 1. SCAN — generate search queries and retrieve papers
+        search_queries, papers = self._scan(program_md, log)
+
+        # 2. PROPOSE — form hypothesis based on literature and results
+        proposal = self._propose(program_md, papers, results_tsv, train_py, search_queries, log)
+
+        # 3. CRITIQUE — independent review of the proposal
+        critique = self._critique(proposal, results_tsv, log)
+
+        # 4. REFINE — address critique, produce implementation plan
+        plan = self._refine(proposal, critique, train_py, log)
+
+        # 5. IMPLEMENT — write the actual code (gets plan + full train.py, NO research context)
+        new_train_py, implement_raw = self._implement(plan, train_py, log)
+
+        return CouncilResult(
+            proposal=proposal,
+            critique=critique,
+            plan=plan,
+            new_train_py=new_train_py,
+            implement_raw_response=implement_raw,
+            log=log,
+        )
+
+    def _scan(self, program_md: str, log: list[dict]) -> tuple[list[SearchQuery], list[Paper]]:
+        """Generate search queries and retrieve relevant papers."""
+        prompt = SCAN_PROMPT.format(program_md=program_md, max_queries=MAX_SEARCH_QUERIES)
+        response = self.llm.complete(role="scan", prompt=prompt, system=SCAN_SYSTEM)
+
+        log.append({
+            "step": "scan",
+            "model": response.model,
+            "input_tokens": response.input_tokens,
+            "output_tokens": response.output_tokens,
+            "cost": response.cost,
+            "timestamp": datetime.now().isoformat(),
+        })
+
+        # Parse search queries from response
+        queries = self._parse_search_queries(response.content)
+
+        # Retrieve papers for each query (dedup by arxiv_id)
+        all_papers: list[Paper] = []
+        seen_ids: set[str] = set()
+        if self.literature:
+            for sq in queries:
+                results = self.literature.search(sq.query, n_results=MAX_PAPERS_PER_QUERY)
+                for r in results:
+                    if r.paper.arxiv_id not in seen_ids:
+                        seen_ids.add(r.paper.arxiv_id)
+                        all_papers.append(r.paper)
+
+        log.append({
+            "step": "scan_results",
+            "queries": [{"query": sq.query, "rationale": sq.rationale} for sq in queries],
+            "papers_found": len(all_papers),
+        })
+
+        return queries, all_papers
+
+    def _propose(
+        self,
+        program_md: str,
+        papers: list[Paper],
+        results_tsv: str,
+        train_py: str,
+        search_queries: list[SearchQuery],
+        log: list[dict],
+    ) -> Proposal:
+        """Propose a hypothesis based on literature and past results."""
+        prompt = PROPOSE_PROMPT.format(
+            program_md=program_md,
+            papers_summary=format_papers_summary(papers),
+            results_history=format_results_history(results_tsv),
+            hyperparams=extract_hyperparams(train_py),
+        )
+        response = self.llm.complete(role="propose", prompt=prompt, system=PROPOSE_SYSTEM)
+
+        log.append({
+            "step": "propose",
+            "model": response.model,
+            "input_tokens": response.input_tokens,
+            "output_tokens": response.output_tokens,
+            "cost": response.cost,
+            "timestamp": datetime.now().isoformat(),
+        })
+
+        # Parse proposal
+        hypothesis = self._extract_field(response.content, "HYPOTHESIS")
+        approach = self._extract_field(response.content, "APPROACH")
+        expected_impact = self._extract_field(response.content, "EXPECTED_IMPACT")
+
+        return Proposal(
+            hypothesis=hypothesis,
+            approach=approach,
+            expected_impact=expected_impact,
+            search_queries=search_queries,
+            papers_found=papers,
+            raw_response=response.content,
+        )
+
+    def _critique(self, proposal: Proposal, results_tsv: str, log: list[dict]) -> Critique:
+        """Independent critique of the proposal."""
+        proposal_text = (
+            f"HYPOTHESIS: {proposal.hypothesis}\n"
+            f"APPROACH: {proposal.approach}\n"
+            f"EXPECTED_IMPACT: {proposal.expected_impact}"
+        )
+        prompt = CRITIQUE_PROMPT.format(
+            proposal_text=proposal_text,
+            results_history=format_results_history(results_tsv, max_rows=5),
+        )
+        response = self.llm.complete(role="critique", prompt=prompt, system=CRITIQUE_SYSTEM)
+
+        log.append({
+            "step": "critique",
+            "model": response.model,
+            "input_tokens": response.input_tokens,
+            "output_tokens": response.output_tokens,
+            "cost": response.cost,
+            "timestamp": datetime.now().isoformat(),
+        })
+
+        concerns = self._extract_list(response.content, "CONCERNS")
+        suggestions = self._extract_list(response.content, "SUGGESTIONS")
+        overall = self._extract_field(response.content, "OVERALL")
+
+        return Critique(
+            concerns=concerns,
+            suggestions=suggestions,
+            overall_assessment=overall,
+            raw_response=response.content,
+        )
+
+    def _refine(
+        self, proposal: Proposal, critique: Critique, train_py: str, log: list[dict]
+    ) -> ExperimentPlan:
+        """Refine the proposal into an implementation plan."""
+        proposal_text = (
+            f"HYPOTHESIS: {proposal.hypothesis}\n"
+            f"APPROACH: {proposal.approach}\n"
+            f"EXPECTED_IMPACT: {proposal.expected_impact}"
+        )
+        critique_text = (
+            "CONCERNS:\n" + "\n".join(f"- {c}" for c in critique.concerns) + "\n\n"
+            "SUGGESTIONS:\n" + "\n".join(f"- {s}" for s in critique.suggestions) + "\n\n"
+            f"OVERALL: {critique.overall_assessment}"
+        )
+        prompt = REFINE_PROMPT.format(
+            proposal_text=proposal_text,
+            critique_text=critique_text,
+            hyperparams=extract_hyperparams(train_py),
+        )
+        response = self.llm.complete(role="refine", prompt=prompt, system=REFINE_SYSTEM)
+
+        log.append({
+            "step": "refine",
+            "model": response.model,
+            "input_tokens": response.input_tokens,
+            "output_tokens": response.output_tokens,
+            "cost": response.cost,
+            "timestamp": datetime.now().isoformat(),
+        })
+
+        description = self._extract_field(response.content, "DESCRIPTION")
+        code_changes = self._extract_field(response.content, "CODE_CHANGES")
+        addresses = self._extract_list(response.content, "ADDRESSES")
+
+        return ExperimentPlan(
+            description=description,
+            code_changes_summary=code_changes,
+            addresses_concerns=addresses,
+            raw_response=response.content,
+        )
+
+    def _implement(self, plan: ExperimentPlan, train_py: str, log: list[dict]) -> tuple[str, str]:
+        """Write the actual code changes. Gets ONLY the plan and train.py — no research context."""
+        plan_text = (
+            f"DESCRIPTION: {plan.description}\n"
+            f"CODE_CHANGES: {plan.code_changes_summary}"
+        )
+        prompt = IMPLEMENT_PROMPT.format(plan_text=plan_text, train_py=train_py)
+        response = self.llm.complete(
+            role="implement",
+            prompt=prompt,
+            system=IMPLEMENT_SYSTEM,
+            temperature=0.3,  # Lower temperature for code generation
+            max_tokens=8192,  # train.py is ~500 lines, need room for full file
+        )
+
+        log.append({
+            "step": "implement",
+            "model": response.model,
+            "input_tokens": response.input_tokens,
+            "output_tokens": response.output_tokens,
+            "cost": response.cost,
+            "timestamp": datetime.now().isoformat(),
+        })
+
+        # Clean the response — strip markdown fences if present
+        code = self._clean_code_response(response.content)
+        return code, response.content
+
+    # --- Parsing helpers ---
+
+    @staticmethod
+    def _extract_field(text: str, field_name: str) -> str:
+        """Extract a named field value from structured LLM output."""
+        pattern = rf"{field_name}:\s*(.+?)(?=\n[A-Z_]+:|$)"
+        match = re.search(pattern, text, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        return text.strip()  # Fallback: return entire text if field not found
+
+    @staticmethod
+    def _extract_list(text: str, section_name: str) -> list[str]:
+        """Extract a bulleted list under a section header."""
+        pattern = rf"{section_name}:\s*\n((?:\s*-\s*.+\n?)+)"
+        match = re.search(pattern, text)
+        if match:
+            items = re.findall(r"-\s*(.+)", match.group(1))
+            return [item.strip() for item in items]
+        return []
+
+    @staticmethod
+    def _parse_search_queries(text: str) -> list[SearchQuery]:
+        """Parse search queries from scan step output."""
+        queries = []
+        parts = re.split(r"---+", text)
+        for part in parts:
+            query_match = re.search(r"QUERY:\s*(.+)", part)
+            rationale_match = re.search(r"RATIONALE:\s*(.+)", part)
+            if query_match:
+                queries.append(SearchQuery(
+                    query=query_match.group(1).strip(),
+                    rationale=rationale_match.group(1).strip() if rationale_match else "",
+                ))
+        # Fallback: if no structured format found, treat each line as a query
+        if not queries:
+            for line in text.strip().split("\n"):
+                line = line.strip().lstrip("0123456789.-) ")
+                if line and len(line) > 5:
+                    queries.append(SearchQuery(query=line, rationale=""))
+        return queries[:MAX_SEARCH_QUERIES]
+
+    @staticmethod
+    def _clean_code_response(text: str) -> str:
+        """Strip markdown code fences from LLM response."""
+        # Remove ```python ... ``` wrapping
+        text = re.sub(r"^```(?:python)?\s*\n", "", text.strip())
+        text = re.sub(r"\n```\s*$", "", text.strip())
+        return text.strip()
