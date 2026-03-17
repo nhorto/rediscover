@@ -1,9 +1,32 @@
 """Tests for loop guards."""
 
+import numpy as np
 import pytest
 
-from src.app.guards import LoopGuards
+from src.app.guards import LoopGuards, cosine_similarity
 from src.utils.costs import CostTracker
+
+
+@pytest.mark.unit
+class TestCosineSimilarity:
+    def test_identical_vectors(self):
+        a = np.array([1.0, 2.0, 3.0])
+        assert cosine_similarity(a, a) == pytest.approx(1.0)
+
+    def test_orthogonal_vectors(self):
+        a = np.array([1.0, 0.0])
+        b = np.array([0.0, 1.0])
+        assert cosine_similarity(a, b) == pytest.approx(0.0)
+
+    def test_opposite_vectors(self):
+        a = np.array([1.0, 2.0])
+        b = np.array([-1.0, -2.0])
+        assert cosine_similarity(a, b) == pytest.approx(-1.0)
+
+    def test_zero_vector(self):
+        a = np.array([0.0, 0.0])
+        b = np.array([1.0, 2.0])
+        assert cosine_similarity(a, b) == 0.0
 
 
 @pytest.mark.unit
@@ -84,7 +107,7 @@ class TestLoopGuards:
         assert status.should_force_novelty is False
 
     def test_recent_hypotheses_capped(self):
-        guards = LoopGuards()
+        guards = LoopGuards(max_hypothesis_history=5)
         for i in range(10):
             guards.record_result(1.5, "keep", f"hypothesis {i}")
         assert len(guards.recent_hypotheses) == 5
@@ -95,3 +118,50 @@ class TestLoopGuards:
         summary = guards.summary()
         assert "Iteration 1" in summary
         assert "1.500000" in summary
+
+
+@pytest.mark.unit
+class TestHypothesisSimilarity:
+    def test_no_history_not_similar(self):
+        guards = LoopGuards()
+        emb = np.random.randn(768).astype(np.float32)
+        result = guards.check_similarity(emb)
+        assert result.is_too_similar is False
+        assert result.most_similar_score == 0.0
+
+    def test_identical_hypothesis_detected(self):
+        guards = LoopGuards(similarity_threshold=0.9)
+        emb = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32)
+        guards.record_result(1.5, "keep", "reduce head dim to 64")
+        guards.record_hypothesis_embedding(emb)
+
+        result = guards.check_similarity(emb)
+        assert result.is_too_similar is True
+        assert result.most_similar_score == pytest.approx(1.0)
+
+    def test_different_hypothesis_passes(self):
+        guards = LoopGuards(similarity_threshold=0.9)
+        emb1 = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
+        emb2 = np.array([0.0, 1.0, 0.0, 0.0], dtype=np.float32)
+        guards.record_result(1.5, "keep", "reduce head dim")
+        guards.record_hypothesis_embedding(emb1)
+
+        result = guards.check_similarity(emb2)
+        assert result.is_too_similar is False
+
+    def test_embeddings_capped(self):
+        guards = LoopGuards(max_hypothesis_history=3)
+        for i in range(5):
+            emb = np.random.randn(768).astype(np.float32)
+            guards.record_result(1.5, "keep", f"hyp {i}")
+            guards.record_hypothesis_embedding(emb)
+        assert len(guards.hypothesis_embeddings) == 3
+
+    def test_similar_hypothesis_returns_text(self):
+        guards = LoopGuards(similarity_threshold=0.9)
+        emb = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+        guards.record_result(1.5, "keep", "try linear attention with ELU kernel")
+        guards.record_hypothesis_embedding(emb)
+
+        result = guards.check_similarity(emb)
+        assert "linear attention" in result.most_similar_hypothesis

@@ -2,7 +2,18 @@
 
 from dataclasses import dataclass, field
 
+import numpy as np
+
 from src.utils.costs import CostTracker
+
+
+def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+    """Compute cosine similarity between two vectors."""
+    norm_a = np.linalg.norm(a)
+    norm_b = np.linalg.norm(b)
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return float(np.dot(a, b) / (norm_a * norm_b))
 
 
 @dataclass
@@ -16,6 +27,15 @@ class GuardStatus:
 
 
 @dataclass
+class SimilarityResult:
+    """Result of checking a hypothesis against previous ones."""
+
+    is_too_similar: bool
+    most_similar_score: float
+    most_similar_hypothesis: str
+
+
+@dataclass
 class LoopGuards:
     """Monitors loop health and enforces limits."""
 
@@ -24,6 +44,7 @@ class LoopGuards:
     stuck_threshold: int = 20  # no improvement in this many experiments → force novelty
     error_cascade_limit: int = 3  # consecutive crashes → force different approach
     similarity_threshold: float = 0.9  # cosine sim between hypotheses → reject
+    max_hypothesis_history: int = 10  # how many past hypotheses to check against
 
     # Internal state
     iteration: int = 0
@@ -31,13 +52,14 @@ class LoopGuards:
     experiments_since_improvement: int = 0
     consecutive_errors: int = 0
     recent_hypotheses: list[str] = field(default_factory=list)
+    hypothesis_embeddings: list[np.ndarray] = field(default_factory=list)
     results_history: list[dict] = field(default_factory=list)
 
     def record_result(self, val_bpb: float | None, status: str, hypothesis: str) -> None:
         """Record an experiment result and update internal state."""
         self.iteration += 1
         self.recent_hypotheses.append(hypothesis)
-        if len(self.recent_hypotheses) > 5:
+        if len(self.recent_hypotheses) > self.max_hypothesis_history:
             self.recent_hypotheses.pop(0)
 
         self.results_history.append({
@@ -57,6 +79,35 @@ class LoopGuards:
             self.experiments_since_improvement = 0
         else:
             self.experiments_since_improvement += 1
+
+    def record_hypothesis_embedding(self, embedding: np.ndarray) -> None:
+        """Store the embedding for a hypothesis (called after recording result)."""
+        self.hypothesis_embeddings.append(embedding)
+        if len(self.hypothesis_embeddings) > self.max_hypothesis_history:
+            self.hypothesis_embeddings.pop(0)
+
+    def check_similarity(self, new_embedding: np.ndarray) -> SimilarityResult:
+        """Check if a new hypothesis is too similar to recent ones."""
+        if not self.hypothesis_embeddings:
+            return SimilarityResult(is_too_similar=False, most_similar_score=0.0, most_similar_hypothesis="")
+
+        best_score = 0.0
+        best_hypothesis = ""
+
+        for i, stored_emb in enumerate(self.hypothesis_embeddings):
+            score = cosine_similarity(new_embedding, stored_emb)
+            if score > best_score:
+                best_score = score
+                # Get the corresponding hypothesis text
+                offset = max(0, len(self.recent_hypotheses) - len(self.hypothesis_embeddings))
+                if i + offset < len(self.recent_hypotheses):
+                    best_hypothesis = self.recent_hypotheses[i + offset]
+
+        return SimilarityResult(
+            is_too_similar=best_score >= self.similarity_threshold,
+            most_similar_score=best_score,
+            most_similar_hypothesis=best_hypothesis,
+        )
 
     def check(self, cost_tracker: CostTracker) -> GuardStatus:
         """Check all guards. Returns a GuardStatus."""

@@ -15,6 +15,7 @@
 | [step-7-research-loop.md](exec-plans/active/step-7-research-loop.md) | Complete | Wire the loop: council + training + git + guards |
 | [phase-roadmap.md](exec-plans/active/phase-roadmap.md) | Active | Full project roadmap: Phases 1-8 |
 | [phase-2-paper-ingestion.md](exec-plans/active/phase-2-paper-ingestion.md) | Active | Paper ingestion into Chroma knowledge base |
+| [hypothesis-similarity.md](exec-plans/active/hypothesis-similarity.md) | Complete | Embedding-based hypothesis dedup with retry logic |
 
 ## Completed Plans
 

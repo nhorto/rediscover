@@ -123,9 +123,11 @@ def run_loop(
 
     # Initialize literature service (if chroma DB exists)
     literature = None
+    embedder = None
     chroma_path = PROJECT_ROOT / "data" / "chroma_db"
     if chroma_path.exists():
         literature = LiteratureService(chroma_path=str(chroma_path))
+        embedder = literature.embedder  # reuse for hypothesis similarity
         print(f"Literature: {literature.paper_count} papers in knowledge base")
     else:
         print("Literature: No knowledge base found (run paper ingestion first)")
@@ -187,13 +189,37 @@ def run_loop(
         # Track cost for this cycle
         cost_before = cost_tracker.total_cost
 
-        # Run council
-        print("  Council deliberating...")
-        try:
-            result = council.run_council(train_py, results_tsv, program_md)
-        except Exception as e:
-            print(f"  Council FAILED: {e}")
-            guards.record_result(None, "crash", f"Council error: {e}")
+        # Run council (with similarity-based retry)
+        max_retries = 3
+        result = None
+        for attempt in range(max_retries):
+            print(f"  Council deliberating{' (retry ' + str(attempt) + ')' if attempt > 0 else ''}...")
+            try:
+                result = council.run_council(train_py, results_tsv, program_md)
+            except Exception as e:
+                print(f"  Council FAILED: {e}")
+                guards.record_result(None, "crash", f"Council error: {e}")
+                break
+
+            # Check hypothesis similarity against recent experiments
+            if embedder is not None:
+                hyp_embedding = embedder.encode([result.proposal.hypothesis])[0]
+                sim_result = guards.check_similarity(hyp_embedding)
+                if sim_result.is_too_similar:
+                    print(f"  SIMILAR ({sim_result.most_similar_score:.2f}) to: {sim_result.most_similar_hypothesis[:80]}")
+                    if attempt < max_retries - 1:
+                        program_md += (
+                            f"\n\n## IMPORTANT: AVOID REPETITION\n"
+                            f"Your last proposal was too similar (score={sim_result.most_similar_score:.2f}) to a previous one: "
+                            f'"{sim_result.most_similar_hypothesis[:200]}". '
+                            f"Propose something DIFFERENT."
+                        )
+                        continue
+                    else:
+                        print("  Max retries reached — proceeding with this hypothesis anyway")
+            break
+
+        if result is None:
             continue
 
         cost_this_cycle = cost_tracker.total_cost - cost_before
@@ -250,6 +276,9 @@ def run_loop(
 
         # Update guards
         guards.record_result(val_bpb, status, result.proposal.hypothesis)
+        if embedder is not None:
+            hyp_embedding = embedder.encode([result.proposal.hypothesis])[0]
+            guards.record_hypothesis_embedding(hyp_embedding)
 
         # Status
         print(f"  {guards.summary()}")

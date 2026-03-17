@@ -19,7 +19,7 @@
 | arxiv.py | 2 pass | Complete — date-filtered search, single paper lookup |
 | git.py | 8 pass | Complete — commit, reset, log, diff, has_changes |
 | costs.py | 6 pass | Complete — estimate_cost, CostTracker, BudgetExceededError |
-| guards.py | 11 pass | Complete — LoopGuards with all guard conditions |
+| guards.py | 16 pass | Complete — LoopGuards with all guards + hypothesis similarity (cosine, SPECTER embeddings) |
 | loop.py | 6 pass | Complete — run_loop orchestrator, parse_val_bpb, append helpers |
 
 ## Scoring Criteria

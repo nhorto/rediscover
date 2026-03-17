@@ -42,7 +42,7 @@ MAX_RESULTS_PER_QUERY = 500
 
 def run_ingestion(queries: list[str], max_results: int = MAX_RESULTS_PER_QUERY) -> None:
     """Run paper ingestion for a list of queries."""
-    print(f"Initializing literature service (loading SPECTER embedding model)...")
+    print("Initializing literature service (loading SPECTER embedding model)...")
     t0 = time.time()
     service = LiteratureService(chroma_path=CHROMA_PATH)
     print(f"  Model loaded in {time.time() - t0:.1f}s")
@@ -72,7 +72,7 @@ def run_ingestion(queries: list[str], max_results: int = MAX_RESULTS_PER_QUERY) 
 
     print()
     print(f"{'=' * 50}")
-    print(f"Ingestion complete!")
+    print("Ingestion complete!")
     print(f"  New papers added: {total_new}")
     print(f"  Total papers in DB: {service.paper_count}")
     print(f"  DB location: {CHROMA_PATH}")
