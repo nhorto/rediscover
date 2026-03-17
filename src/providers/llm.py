@@ -12,12 +12,14 @@ litellm.suppress_debug_info = True
 # Role → model mapping: October 2023 cutoff council
 # All models have confirmed training data cutoff before Jan 1, 2024.
 # See docs/design-docs/model-selection-strategy.md for rationale.
+# NOTE: o1 has compatibility issues with litellm (returns None content).
+# Using gpt-4o-2024-05-13 for all roles until o1 support is fixed.
 DEFAULT_MODEL_MAP: dict[str, str] = {
-    "scan": "openrouter/openai/gpt-4o-2024-05-13",   # Oct 2023 cutoff, cheap
-    "propose": "openrouter/openai/o1",                 # Oct 2023 cutoff, strong reasoning
-    "critique": "openrouter/openai/gpt-4o-2024-05-13", # Oct 2023 cutoff, independent model
-    "refine": "openrouter/openai/o1",                   # Oct 2023 cutoff, strong reasoning
-    "implement": "openrouter/openai/o1",                # Oct 2023 cutoff, excellent code
+    "scan": "openrouter/openai/gpt-4o-2024-05-13",      # Oct 2023 cutoff
+    "propose": "openrouter/openai/gpt-4o-2024-05-13",    # Oct 2023 cutoff
+    "critique": "openrouter/openai/gpt-4o-2024-05-13",   # Oct 2023 cutoff
+    "refine": "openrouter/openai/gpt-4o-2024-05-13",     # Oct 2023 cutoff
+    "implement": "openrouter/openai/gpt-4o-2024-05-13",  # Oct 2023 cutoff
 }
 
 
