@@ -1,3 +1,4 @@
 commit	val_bpb	memory_gb	status	description
 baseline	1.763539	0.0	keep	Baseline: 11.5M params, 4 layers, 256 dim, 2 heads, MuonAdamW, DEPTH=4, BATCH=16
 reverted	N/A	0.0	crash	CRASH: This experiment replaces the standard softmax in causal self
+reverted	N/A	0.0	crash	CRASH: This experiment aims to test the stability and effectiveness

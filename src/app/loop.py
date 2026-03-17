@@ -200,7 +200,8 @@ def run_training() -> tuple[float | None, str]:
             timeout=TRAINING_TIMEOUT,
             cwd=str(PROJECT_ROOT),
         )
-        output = result.stdout + result.stderr
+        # Combine output, prioritizing stderr (where Python tracebacks go)
+        output = result.stderr + "\n" + result.stdout if result.stderr else result.stdout
         if result.returncode != 0:
             return None, output
         val_bpb = parse_val_bpb(output)
@@ -451,7 +452,7 @@ def run_loop(
         # If training crashed, try error feedback
         if val_bpb is None and max_fix_attempts > 0:
             print("  Training CRASHED — attempting fix...")
-            print(f"  Error: {training_output[:200]}")
+            print(f"  Error: {training_output[-500:]}")
             git.reset_last()
 
             # Try to fix the code based on the training error
