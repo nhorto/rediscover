@@ -97,6 +97,10 @@ experiments/                     Experiment workspace (git-tracked)
 tests/
 ├── unit/                        Pure function tests
 ├── integration/                 End-to-end pipeline tests
+├── architecture/                Import and convention enforcement tests
+│   ├── test_imports.py          Dependency direction, provider isolation, no circular deps
+│   ├── test_conventions.py      File size, naming, pure function checks, no hardcoded secrets
+│   └── conftest.py              Shared fixtures for architecture tests
 └── conftest.py
 ```
 
@@ -189,3 +193,27 @@ docs/
 ├── product-specs/       ← Product specifications
 └── references/          ← Research and external reference material
 ```
+
+## Current Guarantees
+
+What the system actually delivers today:
+
+- **Literature scanning** — Date-filtered arXiv API search + SPECTER embeddings + ChromaDB vector storage and retrieval
+- **Council pipeline** — Scan, Propose, Critique, Refine, Implement (5 LLM roles with role-based model routing)
+- **Research loop with guards** — Budget cap, stuck detection, error cascade recovery, embedding-based hypothesis similarity check
+- **66 passing unit tests** across all providers and domains
+- **Cost tracking** — Per-call cost estimation and cumulative budget enforcement via CostTracker
+- **Git-based experiment logging** — Each experiment is a git commit; failed experiments are reverted with `git reset`
+- **Architecture enforcement tests** — Import direction, provider isolation, circular dependency detection, file size limits, no hardcoded secrets
+
+## What Does NOT Exist Here
+
+Honest list of what is not built:
+
+- **No web UI or dashboard** — CLI-only, file-based interface
+- **No real-time monitoring** — Check experiment_log.md and results.tsv manually
+- **No multi-GPU or distributed training** — Single machine (M4 Mac, 32GB, MPS)
+- **No paper writing or publication** — The system discovers and validates, it does not write papers
+- **No validation domain** — Retrodiction scoring (comparing agent output vs post-cutoff breakthroughs) is not yet implemented
+- **No CI/CD pipeline** — Tests run locally via `uv run pytest`
+- **Phase 2+ not started** — Paper ingestion, hypothesis dedup, focused research direction are in planning

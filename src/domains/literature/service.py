@@ -11,8 +11,9 @@ from src.domains.literature.config import (
     DEFAULT_QUERY_RESULTS,
     EMBEDDING_MODEL,
 )
-from src.domains.literature.types import Paper, SearchResult
+from src.domains.literature.types import SearchResult
 from src.providers.arxiv import search_papers
+from src.types import Paper
 
 
 class LiteratureService:

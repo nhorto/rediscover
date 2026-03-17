@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 
-from src.domains.literature.types import Paper
+from src.types import Paper
 
 
 @dataclass

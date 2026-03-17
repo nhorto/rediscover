@@ -9,15 +9,15 @@ from src.utils.costs import CostTracker
 # Suppress litellm's verbose logging
 litellm.suppress_debug_info = True
 
-# Role → model mapping: December 2023 cutoff council
-# All models have confirmed training data cutoff before Dec 31, 2023.
+# Role → model mapping: October 2023 cutoff council
+# All models have confirmed training data cutoff before Jan 1, 2024.
 # See docs/design-docs/model-selection-strategy.md for rationale.
 DEFAULT_MODEL_MAP: dict[str, str] = {
-    "scan": "openrouter/mistralai/mistral-7b-instruct-v0.2",          # Dec 2023 cutoff
-    "propose": "openrouter/mistralai/mixtral-8x7b-instruct",          # Dec 2023 cutoff
-    "critique": "openrouter/mistralai/mistral-7b-instruct-v0.2",      # Dec 2023 cutoff
-    "refine": "openrouter/mistralai/mixtral-8x7b-instruct",           # Dec 2023 cutoff
-    "implement": "openrouter/deepseek/deepseek-coder-33b-instruct",   # Nov 2023 cutoff
+    "scan": "openrouter/openai/gpt-4o-2024-05-13",   # Oct 2023 cutoff, cheap
+    "propose": "openrouter/openai/o1",                 # Oct 2023 cutoff, strong reasoning
+    "critique": "openrouter/openai/gpt-4o-2024-05-13", # Oct 2023 cutoff, independent model
+    "refine": "openrouter/openai/o1",                   # Oct 2023 cutoff, strong reasoning
+    "implement": "openrouter/openai/o1",                # Oct 2023 cutoff, excellent code
 }
 
 

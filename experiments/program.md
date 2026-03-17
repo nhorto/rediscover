@@ -20,30 +20,23 @@ The baseline model is a 4-layer GPT with:
 
 ## What to Explore
 
-You should search the literature and explore approaches such as:
+Search the literature for existing approaches to reducing attention memory cost. The papers in the knowledge base cover work published up to December 2023. Read them, understand the trade-offs, and propose experiments based on what you learn.
 
-### Memory Reduction
-- Low-rank projections of keys and/or values before computing attention
-- Sharing keys/values across heads or layers
-- Compressing the KV representation into a smaller latent space
-- Reducing the number of KV heads (multi-query attention, grouped-query attention trade-offs)
+**Your goal is to reduce the memory footprint of the attention mechanism while maintaining or improving val_bpb.**
 
-### Sub-Quadratic Attention
-- Linear attention via kernel approximations (random features, ELU-based)
-- Sparse attention patterns (local windows + global tokens, strided patterns)
-- Chunk-based attention (compute attention within fixed-size blocks)
-- Combining local attention with some form of global context aggregation
+Start by understanding the current attention implementation in train.py (the CausalSelfAttention class), then search the literature for ideas that could improve it. Let the papers guide your approach — don't invent from scratch when prior work exists.
 
-### Efficiency Without Architecture Change
-- Different head dimensions (smaller heads = less KV memory per head)
-- Aspect ratio tuning (wider vs deeper at fixed parameter budget)
-- Optimizing the sliding window pattern (which layers get full vs windowed attention)
-- Value embedding frequency (every layer vs alternating vs fewer layers)
+### General directions to consider
+- Can the attention computation be made cheaper without losing quality?
+- Are all heads doing useful work, or could some be shared or removed?
+- Is the full sequence length needed for every layer, or could some layers attend to less?
+- Are there mathematical reformulations of attention that avoid the quadratic cost?
+- Could the model get the same information from attention using fewer parameters?
 
-### Things That Might Surprise You
-- Sometimes removing components improves efficiency more than adding clever ones
-- The interaction between attention pattern and the optimizer matters
-- Small models behave differently than large ones — what works at 11.5M params may not scale, and vice versa
+### Important
+- Focus your changes on the attention mechanism (CausalSelfAttention class and related code)
+- Do not simply change hyperparameters like DEPTH, TOTAL_BATCH_SIZE, or learning rates to game the metric
+- The goal is architectural innovation in attention, not hyperparameter tuning
 
 ## Constraints
 

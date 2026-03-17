@@ -1,6 +1,5 @@
 """Council service: multi-agent deliberation pipeline for experiment proposals."""
 
-import re
 from datetime import datetime
 
 from src.domains.council.config import (
@@ -20,6 +19,12 @@ from src.domains.council.config import (
     format_papers_summary,
     format_results_history,
 )
+from src.domains.council.parsing import (
+    clean_code_response,
+    extract_field,
+    extract_list,
+    parse_search_queries,
+)
 from src.domains.council.types import (
     CouncilResult,
     Critique,
@@ -28,8 +33,8 @@ from src.domains.council.types import (
     SearchQuery,
 )
 from src.domains.literature.service import LiteratureService
-from src.domains.literature.types import Paper
 from src.providers.llm import LLMProvider
+from src.types import Paper
 
 
 class CouncilService:
@@ -87,7 +92,7 @@ class CouncilService:
         })
 
         # Parse search queries from response
-        queries = self._parse_search_queries(response.content)
+        queries = parse_search_queries(response.content)
 
         # Retrieve papers for each query (dedup by arxiv_id)
         all_papers: list[Paper] = []
@@ -136,9 +141,9 @@ class CouncilService:
         })
 
         # Parse proposal
-        hypothesis = self._extract_field(response.content, "HYPOTHESIS")
-        approach = self._extract_field(response.content, "APPROACH")
-        expected_impact = self._extract_field(response.content, "EXPECTED_IMPACT")
+        hypothesis = extract_field(response.content, "HYPOTHESIS")
+        approach = extract_field(response.content, "APPROACH")
+        expected_impact = extract_field(response.content, "EXPECTED_IMPACT")
 
         return Proposal(
             hypothesis=hypothesis,
@@ -158,7 +163,7 @@ class CouncilService:
         )
         prompt = CRITIQUE_PROMPT.format(
             proposal_text=proposal_text,
-            results_history=format_results_history(results_tsv, max_rows=5),
+            results_history=format_results_history(results_tsv, max_recent=5),
         )
         response = self.llm.complete(role="critique", prompt=prompt, system=CRITIQUE_SYSTEM)
 
@@ -171,9 +176,9 @@ class CouncilService:
             "timestamp": datetime.now().isoformat(),
         })
 
-        concerns = self._extract_list(response.content, "CONCERNS")
-        suggestions = self._extract_list(response.content, "SUGGESTIONS")
-        overall = self._extract_field(response.content, "OVERALL")
+        concerns = extract_list(response.content, "CONCERNS")
+        suggestions = extract_list(response.content, "SUGGESTIONS")
+        overall = extract_field(response.content, "OVERALL")
 
         return Critique(
             concerns=concerns,
@@ -212,9 +217,9 @@ class CouncilService:
             "timestamp": datetime.now().isoformat(),
         })
 
-        description = self._extract_field(response.content, "DESCRIPTION")
-        code_changes = self._extract_field(response.content, "CODE_CHANGES")
-        addresses = self._extract_list(response.content, "ADDRESSES")
+        description = extract_field(response.content, "DESCRIPTION")
+        code_changes = extract_field(response.content, "CODE_CHANGES")
+        addresses = extract_list(response.content, "ADDRESSES")
 
         return ExperimentPlan(
             description=description,
@@ -248,55 +253,6 @@ class CouncilService:
         })
 
         # Clean the response — strip markdown fences if present
-        code = self._clean_code_response(response.content)
+        code = clean_code_response(response.content)
         return code, response.content
 
-    # --- Parsing helpers ---
-
-    @staticmethod
-    def _extract_field(text: str, field_name: str) -> str:
-        """Extract a named field value from structured LLM output."""
-        pattern = rf"{field_name}:\s*(.+?)(?=\n[A-Z_]+:|$)"
-        match = re.search(pattern, text, re.DOTALL)
-        if match:
-            return match.group(1).strip()
-        return text.strip()  # Fallback: return entire text if field not found
-
-    @staticmethod
-    def _extract_list(text: str, section_name: str) -> list[str]:
-        """Extract a bulleted list under a section header."""
-        pattern = rf"{section_name}:\s*\n((?:\s*-\s*.+\n?)+)"
-        match = re.search(pattern, text)
-        if match:
-            items = re.findall(r"-\s*(.+)", match.group(1))
-            return [item.strip() for item in items]
-        return []
-
-    @staticmethod
-    def _parse_search_queries(text: str) -> list[SearchQuery]:
-        """Parse search queries from scan step output."""
-        queries = []
-        parts = re.split(r"---+", text)
-        for part in parts:
-            query_match = re.search(r"QUERY:\s*(.+)", part)
-            rationale_match = re.search(r"RATIONALE:\s*(.+)", part)
-            if query_match:
-                queries.append(SearchQuery(
-                    query=query_match.group(1).strip(),
-                    rationale=rationale_match.group(1).strip() if rationale_match else "",
-                ))
-        # Fallback: if no structured format found, treat each line as a query
-        if not queries:
-            for line in text.strip().split("\n"):
-                line = line.strip().lstrip("0123456789.-) ")
-                if line and len(line) > 5:
-                    queries.append(SearchQuery(query=line, rationale=""))
-        return queries[:MAX_SEARCH_QUERIES]
-
-    @staticmethod
-    def _clean_code_response(text: str) -> str:
-        """Strip markdown code fences from LLM response."""
-        # Remove ```python ... ``` wrapping
-        text = re.sub(r"^```(?:python)?\s*\n", "", text.strip())
-        text = re.sub(r"\n```\s*$", "", text.strip())
-        return text.strip()

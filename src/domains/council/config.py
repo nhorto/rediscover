@@ -1,7 +1,10 @@
 """Configuration and prompt templates for the council domain."""
 
-# How many past experiments to show the propose/critique steps
-MAX_RESULTS_HISTORY = 10
+# How many recent raw results to show (alongside summaries of older experiments)
+MAX_RECENT_RESULTS = 10
+
+# How many experiments per summary batch
+SUMMARY_BATCH_SIZE = 20
 
 # How many papers to retrieve per search query
 MAX_PAPERS_PER_QUERY = 5
@@ -145,15 +148,63 @@ def extract_hyperparams(train_py: str) -> str:
     return "\n".join(result).strip()
 
 
-def format_results_history(results_tsv: str, max_rows: int = MAX_RESULTS_HISTORY) -> str:
-    """Format the last N rows of results.tsv for inclusion in prompts."""
+def format_results_history(results_tsv: str, max_recent: int = MAX_RECENT_RESULTS) -> str:
+    """Format results history with summarized older experiments + recent raw results.
+
+    If there are more than max_recent experiments, older ones are summarized into
+    batches of SUMMARY_BATCH_SIZE. The most recent max_recent are shown in full.
+    """
     lines = results_tsv.strip().split("\n")
     if len(lines) <= 1:
         return "No experiments have been run yet."
+
     header = lines[0]
     rows = lines[1:]
-    recent = rows[-max_rows:] if len(rows) > max_rows else rows
-    return header + "\n" + "\n".join(recent)
+    total = len(rows)
+
+    if total <= max_recent:
+        return header + "\n" + "\n".join(rows)
+
+    # Split into older (to summarize) and recent (show raw)
+    older = rows[: total - max_recent]
+    recent = rows[total - max_recent :]
+
+    # Summarize older experiments in batches
+    summaries = []
+    for batch_start in range(0, len(older), SUMMARY_BATCH_SIZE):
+        batch = older[batch_start : batch_start + SUMMARY_BATCH_SIZE]
+        keeps = []
+        discards = []
+        crashes = []
+        for row in batch:
+            parts = row.split("\t")
+            if len(parts) >= 5:
+                status = parts[3]
+                desc = parts[4]
+                bpb = parts[1]
+                if status == "keep":
+                    keeps.append(f"{desc} (val_bpb={bpb})")
+                elif status == "discard":
+                    discards.append(desc)
+                elif status == "crash":
+                    crashes.append(desc)
+
+        batch_num = batch_start // SUMMARY_BATCH_SIZE + 1
+        summary_parts = [f"[Batch {batch_num}, experiments {batch_start + 1}-{batch_start + len(batch)}]"]
+        if keeps:
+            summary_parts.append(f"  Kept: {'; '.join(keeps)}")
+        if discards:
+            summary_parts.append(f"  Discarded ({len(discards)}): {'; '.join(discards[:3])}" + (" ..." if len(discards) > 3 else ""))
+        if crashes:
+            summary_parts.append(f"  Crashed ({len(crashes)}): {'; '.join(crashes[:2])}" + (" ..." if len(crashes) > 2 else ""))
+
+        summaries.append("\n".join(summary_parts))
+
+    result = "## Experiment History Summary\n"
+    result += "\n\n".join(summaries)
+    result += f"\n\n## Recent Experiments (last {max_recent})\n"
+    result += header + "\n" + "\n".join(recent)
+    return result
 
 
 def format_papers_summary(papers: list) -> str:

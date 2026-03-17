@@ -2,6 +2,7 @@
 
 import argparse
 import re
+import stat
 import subprocess
 import sys
 import time
@@ -19,17 +20,130 @@ from src.utils.costs import CostTracker
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 EXPERIMENTS_DIR = PROJECT_ROOT / "experiments"
 TRAIN_PY = EXPERIMENTS_DIR / "train.py"
+PREPARE_PY = EXPERIMENTS_DIR / "prepare.py"
 RESULTS_TSV = EXPERIMENTS_DIR / "results.tsv"
 PROGRAM_MD = EXPERIMENTS_DIR / "program.md"
 EXPERIMENT_LOG = EXPERIMENTS_DIR / "experiment_log.md"
 
+# Files that should be read-only during training (prevent agent cheating)
+PROTECTED_FILES = [PREPARE_PY, RESULTS_TSV, PROGRAM_MD, EXPERIMENT_LOG]
+
 # Training timeout: TIME_BUDGET (300s) + 600s for startup/eval overhead
 TRAINING_TIMEOUT = 900
+
+# Patterns that indicate dangerous code in train.py
+DANGEROUS_PATTERNS = [
+    r'open\s*\([^)]*["\'](?:\.\.|\bprepare\b|\bresults\b|\bprogram\b)',  # writing to protected files
+    r'os\.(?:system|popen|remove|unlink|rmdir)',  # shell commands, file deletion
+    r'subprocess\.',  # subprocess calls
+    r'shutil\.',  # file operations
+    r'__import__',  # dynamic imports
+    r'exec\s*\(',  # dynamic code execution
+    r'eval\s*\(',  # dynamic evaluation
+]
 
 
 def read_file(path: Path) -> str:
     """Read a file and return its contents."""
     return path.read_text()
+
+
+def protect_files() -> None:
+    """Make protected files read-only to prevent agent tampering during training."""
+    for f in PROTECTED_FILES:
+        if f.exists():
+            f.chmod(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)  # 444
+
+
+def unprotect_files() -> None:
+    """Restore write permissions on protected files after training."""
+    for f in PROTECTED_FILES:
+        if f.exists():
+            f.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)  # 644
+
+
+def validate_train_py(code: str) -> tuple[bool, str]:
+    """Check the generated train.py for dangerous patterns.
+
+    Returns (is_safe, reason). If not safe, reason explains why.
+    """
+    for pattern in DANGEROUS_PATTERNS:
+        match = re.search(pattern, code)
+        if match:
+            return False, f"Dangerous pattern detected: {match.group(0)}"
+
+    # Check it's valid Python syntax
+    try:
+        compile(code, "train.py", "exec")
+    except SyntaxError as e:
+        return False, f"Syntax error: {e}"
+
+    return True, ""
+
+
+def validate_diff_is_attention_related(old_code: str, new_code: str) -> tuple[bool, str]:
+    """Check that changes are primarily in attention-related code, not just hyperparameter gaming.
+
+    Returns (is_valid, reason). Allows attention changes + minor supporting changes.
+    Rejects changes that ONLY modify hyperparameters without touching attention.
+    """
+    old_lines = old_code.strip().split("\n")
+    new_lines = new_code.strip().split("\n")
+
+    # Find changed line numbers (simple line-by-line diff)
+    changed_in_attention = False
+    changed_in_hyperparams_only = True
+
+    # Sections we consider "attention-related"
+    attention_markers = [
+        "class CausalSelfAttention",
+        "def forward(self, x, ve, cos_sin",
+        "apply_rotary_emb",
+        "scaled_dot_product_attention",
+        "self.c_q", "self.c_k", "self.c_v", "self.c_proj",
+        "n_head", "n_kv_head", "head_dim",
+        "window_size", "window_pattern",
+        "ve_gate", "value_embeds",
+        "norm(q)", "norm(k)",
+    ]
+
+    # Hyperparameter-only markers
+    hyperparam_markers = [
+        "ASPECT_RATIO", "HEAD_DIM", "WINDOW_PATTERN",
+        "TOTAL_BATCH_SIZE", "EMBEDDING_LR", "UNEMBEDDING_LR",
+        "MATRIX_LR", "SCALAR_LR", "WEIGHT_DECAY",
+        "ADAM_BETAS", "WARMUP_RATIO", "WARMDOWN_RATIO",
+        "FINAL_LR_FRAC", "DEPTH", "DEVICE_BATCH_SIZE",
+    ]
+
+    # Compare lines to find changes
+    has_any_changes = False
+    max_lines = max(len(old_lines), len(new_lines))
+    for i in range(max_lines):
+        old_line = old_lines[i] if i < len(old_lines) else ""
+        new_line = new_lines[i] if i < len(new_lines) else ""
+
+        if old_line != new_line:
+            has_any_changes = True
+            line_content = new_line + old_line
+            # Check if this change touches attention code
+            if any(marker in line_content for marker in attention_markers):
+                changed_in_attention = True
+                changed_in_hyperparams_only = False
+            # Check if this is ONLY a hyperparameter change
+            elif any(marker in line_content for marker in hyperparam_markers):
+                pass  # hyperparameter changes are fine IF attention also changed
+            else:
+                changed_in_hyperparams_only = False
+
+    # No changes at all is fine (nothing wrong happened)
+    if not has_any_changes:
+        return True, ""
+
+    if not changed_in_attention and changed_in_hyperparams_only:
+        return False, "Changes only modify hyperparameters without touching attention code"
+
+    return True, ""
 
 
 def parse_val_bpb(output: str) -> float | None:
@@ -228,6 +342,19 @@ def run_loop(
         print(f"  Plan: {result.plan.description[:100]}")
         print(f"  Council cost: ${cost_this_cycle:.4f}")
 
+        # Validate the generated code
+        is_safe, safety_reason = validate_train_py(result.new_train_py)
+        if not is_safe:
+            print(f"  REJECTED (unsafe): {safety_reason}")
+            guards.record_result(None, "crash", f"Unsafe code: {safety_reason}")
+            continue
+
+        is_on_topic, topic_reason = validate_diff_is_attention_related(train_py, result.new_train_py)
+        if not is_on_topic:
+            print(f"  REJECTED (off-topic): {topic_reason}")
+            guards.record_result(None, "discard", f"Off-topic: {topic_reason}")
+            continue
+
         # Write new train.py
         TRAIN_PY.write_text(result.new_train_py)
 
@@ -243,10 +370,14 @@ def run_loop(
             guards.record_result(None, "crash", f"Git error: {e}")
             continue
 
-        # Run training
+        # Protect files and run training
         print("  Training (5 min budget)...")
+        protect_files()
         t0 = time.time()
-        val_bpb, training_output = run_training()
+        try:
+            val_bpb, training_output = run_training()
+        finally:
+            unprotect_files()
         training_time = time.time() - t0
         print(f"  Training completed in {training_time:.0f}s")
 

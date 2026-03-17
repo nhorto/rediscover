@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import arxiv
 
-from src.domains.literature.types import Paper
+from src.types import Paper
 
 # Default rate limiting is handled by the arxiv library (3s delay)
 DEFAULT_PAGE_SIZE = 500

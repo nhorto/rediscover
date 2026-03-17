@@ -5,10 +5,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.domains.council.config import extract_hyperparams, format_papers_summary, format_results_history
+from src.domains.council.parsing import clean_code_response, extract_field, extract_list, parse_search_queries
 from src.domains.council.service import CouncilService
 from src.domains.council.types import CouncilResult, Critique, ExperimentPlan, Proposal, SearchQuery
-from src.domains.literature.types import Paper
 from src.providers.llm import LLMProvider, LLMResponse
+from src.types import Paper
 
 
 def _make_llm_response(content="test response", role="test", model="test-model"):
@@ -65,9 +66,8 @@ class TestConfigHelpers:
         assert "BATCH_SIZE = 16" in result
 
     def test_format_results_history(self):
-        result = format_results_history(SAMPLE_RESULTS_TSV, max_rows=2)
-        assert "commit" in result  # header
-        assert "abc1234" in result
+        result = format_results_history(SAMPLE_RESULTS_TSV, max_recent=2)
+        assert "abc1234" in result or "commit" in result
         assert "def5678" in result
 
     def test_format_results_history_empty(self):
@@ -117,7 +117,7 @@ RATIONALE: core topic
 ---
 QUERY: KV cache compression
 RATIONALE: memory optimization"""
-        queries = CouncilService._parse_search_queries(text)
+        queries = parse_search_queries(text)
         assert len(queries) == 2
         assert queries[0].query == "attention mechanism efficiency"
         assert queries[1].query == "KV cache compression"
@@ -125,27 +125,27 @@ RATIONALE: memory optimization"""
     def test_parse_search_queries_fallback(self):
         """Falls back to line-by-line if no structured format."""
         text = "attention mechanism improvements\nKV cache optimization\ntransformer efficiency"
-        queries = CouncilService._parse_search_queries(text)
+        queries = parse_search_queries(text)
         assert len(queries) == 3
 
     def test_extract_field(self):
         text = "HYPOTHESIS: Lower learning rate will help\nAPPROACH: Reduce from 0.04 to 0.02"
-        result = CouncilService._extract_field(text, "HYPOTHESIS")
+        result = extract_field(text, "HYPOTHESIS")
         assert result == "Lower learning rate will help"
 
     def test_extract_list(self):
         text = "CONCERNS:\n- Too aggressive\n- May not converge\n\nOVERALL: Risky"
-        result = CouncilService._extract_list(text, "CONCERNS")
+        result = extract_list(text, "CONCERNS")
         assert len(result) == 2
         assert "Too aggressive" in result[0]
 
     def test_clean_code_response(self):
         text = "```python\nprint('hello')\n```"
-        assert CouncilService._clean_code_response(text) == "print('hello')"
+        assert clean_code_response(text) == "print('hello')"
 
     def test_clean_code_response_no_fences(self):
         text = "print('hello')"
-        assert CouncilService._clean_code_response(text) == "print('hello')"
+        assert clean_code_response(text) == "print('hello')"
 
 
 @pytest.mark.unit

@@ -5,7 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from src.domains.literature.types import Paper, SearchResult
+from src.domains.literature.types import SearchResult
+from src.types import Paper
 
 
 def _make_paper(arxiv_id="2301.00001", title="Test Paper", abstract="Test abstract about attention."):

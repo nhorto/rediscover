@@ -5,23 +5,21 @@ from dataclasses import dataclass, field
 # Prices per 1M tokens (input, output) as of March 2026
 # OpenRouter adds 5.5% platform fee on top of provider costs
 MODEL_PRICES: dict[str, tuple[float, float]] = {
-    # December 2023 cutoff council (via OpenRouter)
+    # October 2023 cutoff council (via OpenRouter)
+    "openrouter/openai/o1": (15.0, 60.0),
+    "openrouter/openai/o1-pro": (150.0, 600.0),
+    "openrouter/openai/gpt-4o-2024-05-13": (5.0, 15.0),
+    "openrouter/openai/gpt-4": (30.0, 60.0),
+    # Open-source alternatives (Dec 2023 / Nov 2023 cutoff)
     "openrouter/mistralai/mistral-7b-instruct-v0.2": (0.10, 0.10),
     "openrouter/mistralai/mixtral-8x7b-instruct": (0.60, 0.60),
     "openrouter/deepseek/deepseek-coder-33b-instruct": (0.80, 0.80),
-    # Future: August 2023 cutoff (Run B)
-    "claude-3-opus-20240229": (15.0, 75.0),
-    # Future: April 2024 cutoff (Run C)
-    "claude-3-5-sonnet-20240620": (3.0, 15.0),
-    # Alternative providers
-    "groq/mixtral-8x7b-32768": (0.24, 0.24),
-    "groq/llama-3.1-70b-versatile": (0.59, 0.79),
-    "together_ai/deepseek-ai/deepseek-coder-33b-instruct": (0.90, 0.90),
-    "together_ai/mistralai/Mixtral-8x7B-Instruct-v0.1": (0.60, 0.60),
+    # Direct API
+    "o1": (15.0, 60.0),
+    "gpt-4o-2024-05-13": (5.0, 15.0),
     # Local (Ollama) — free
     "ollama/deepseek-coder:33b": (0.0, 0.0),
     "ollama/mixtral:8x7b": (0.0, 0.0),
-    "ollama/mistral:7b-instruct-v0.2": (0.0, 0.0),
 }
 
 # Default: assume $1/$3 per 1M tokens if model not in price list
