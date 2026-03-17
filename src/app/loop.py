@@ -451,8 +451,12 @@ def run_loop(
 
         # If training crashed, try error feedback
         if val_bpb is None and max_fix_attempts > 0:
+            # Save failing code for debugging
+            debug_path = EXPERIMENTS_DIR / f"debug_crash_{iteration}.py"
+            debug_path.write_text(current_code)
             print("  Training CRASHED — attempting fix...")
-            print(f"  Error: {training_output[-500:]}")
+            print(f"  Failing code saved to: {debug_path}")
+            print(f"  STDERR: {training_output[-800:]}")
             git.reset_last()
 
             # Try to fix the code based on the training error

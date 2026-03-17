@@ -40,3 +40,6 @@ experiments/checkpoints/
 !experiments/program.md
 !experiments/results.tsv
 !experiments/experiment_log.md
+
+# Debug crash files (generated during experiments)
+experiments/debug_crash_*.py
