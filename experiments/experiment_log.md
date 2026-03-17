@@ -80,3 +80,30 @@ EXPECTED IMPACT: Linear attention reduces the memory complexity from O(N²) to O
 **Cost this cycle:** $0.3874
 **Cumulative cost:** $0.6182
 ---
+
+## Experiment 1 — 2026-03-17 19:33:22
+**Hypothesis:** Implementing a linear attention mechanism using kernel-based feature maps, specifically the ELU+1 feature map, will reduce the memory complexity of the attention mechanism from O(N²) to O(N) and maintain or improve the validation bits-per-byte (val_bpb).
+**Approach:** 1. Modify the `CausalSelfAttention` class in `train.py` to replace the standard multi-head self-attention mechanism with a linear attention mechanism.
+2. Use the ELU+1 feature map to approximate the softmax attention, as described in the literature [2311.13541v4] Linear Log-Normal Attention with Unbiased Concentration.
+3. Specifically, replace the attention computation:
+   ```python
+   # Original attention computation
+   attn = torch.softmax((q @ k.transpose(-2, -1)) / sqrt(d_k), dim=-1)
+   attn = attn @ v
+
+   # Modified linear attention computation with ELU+1 feature map
+   q_prime = elu(q) + 1
+   k_prime = elu(k.transpose(-2, -1)) + 1
+   v_prime = v
+
+   attn = (q_prime @ k_prime) @ v_prime
+   ```
+4. Ensure that the dimensions and weight initialization are consistent with the baseline model.
+5. Validate that the modified attention mechanism integrates correctly with the existing model architecture and training loop.
+**Papers consulted:** Reproduction Report on "Learn to Pay Attention", Reversible Recurrent Neural Networks, Long Short-Term Attention
+**Critique:** The hypothesis of using kernel-based feature maps to reduce memory complexity in attention mechanisms is promising, especially for handling longer sequences efficiently. However, the recent crashes in
+**Plan:** This experiment refines the implementation of a linear attention mechanism using the ELU+1 feature map to reduce memory complexity, while ensuring stability and integration within the model.
+**Result:** val_bpb=CRASH (crash)
+**Cost this cycle:** $0.2374
+**Cumulative cost:** $0.2374
+---

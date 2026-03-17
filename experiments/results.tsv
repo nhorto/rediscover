@@ -3,3 +3,4 @@ baseline	1.763539	0.0	keep	Baseline: 11.5M params, 4 layers, 256 dim, 2 heads, M
 reverted	N/A	0.0	crash	CRASH: This experiment replaces the standard softmax in causal self
 reverted	N/A	0.0	crash	CRASH: This experiment aims to test the stability and effectiveness
 reverted	N/A	0.0	crash	CRASH: This experiment implements Linear Log-Normal Attention in th
+reverted	N/A	0.0	crash	CRASH: This experiment refines the implementation of a linear atten
