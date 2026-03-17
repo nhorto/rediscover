@@ -107,22 +107,57 @@ ADDRESSES:
 - <how you addressed concern 1>
 - <how you addressed concern 2>"""
 
-IMPLEMENT_SYSTEM = """You are an expert PyTorch programmer. Write clean, correct code.
+IMPLEMENT_SYSTEM = """You are an expert PyTorch programmer. Write clean, correct, runnable code.
 You will receive a plan describing changes to make to a transformer training script.
 Return the COMPLETE modified train.py file. Do not use placeholders or comments like '# ... rest unchanged'.
-The entire file must be valid Python that can run with: uv run experiments/train.py"""
+The entire file must be valid Python that can run with: uv run experiments/train.py
+
+CRITICAL RULES:
+1. The file must be syntactically valid Python — no unclosed parentheses, brackets, or strings.
+2. Every class and function from the original must remain unless the plan explicitly removes it.
+3. The output format (print statements at the end with val_bpb:, training_seconds:, etc.) must NOT change.
+4. The imports section must work — do not import packages that aren't installed.
+5. Keep the training loop structure intact — the time-based budget system must still work.
+6. Test your logic mentally: will tensor shapes match? Are dimensions consistent?"""
 
 IMPLEMENT_PROMPT = """## Implementation Plan
 {plan_text}
+
+## Code Structure (DO NOT break these interfaces)
+{code_structure}
 
 ## Current train.py (COMPLETE FILE — modify and return the full file)
 ```python
 {train_py}
 ```
 
-Apply the changes described in the plan. Return the COMPLETE modified train.py file.
-Do not add any new import dependencies beyond what is already imported.
-Do not change the TIME_BUDGET, evaluation logic, or output format.
+Apply the changes described in the plan. Focus your modifications on the CausalSelfAttention class
+and related attention code. Keep everything else EXACTLY as-is unless the plan requires changing it.
+
+RULES:
+- Return the COMPLETE modified train.py file
+- Do not add new import dependencies beyond what is already imported
+- Do not change TIME_BUDGET, evaluation logic, or the output format at the end
+- Do not change the optimizer setup, training loop, or data loading
+- Ensure all tensor shapes are consistent (check dimensions carefully)
+- Return ONLY the Python code, no markdown fences, no explanation"""
+
+IMPLEMENT_FIX_SYSTEM = """You are an expert PyTorch programmer fixing a broken training script.
+The previous version of train.py had an error. Fix ONLY the error — do not make other changes.
+Return the COMPLETE fixed train.py file."""
+
+IMPLEMENT_FIX_PROMPT = """## Error from Previous Attempt
+```
+{error_text}
+```
+
+## Broken train.py (COMPLETE FILE — fix and return the full file)
+```python
+{train_py}
+```
+
+Fix the error described above. Return the COMPLETE fixed train.py file.
+Do not make any changes beyond what is needed to fix this specific error.
 Return ONLY the Python code, no markdown fences, no explanation."""
 
 
@@ -204,6 +239,38 @@ def format_results_history(results_tsv: str, max_recent: int = MAX_RECENT_RESULT
     result += "\n\n".join(summaries)
     result += f"\n\n## Recent Experiments (last {max_recent})\n"
     result += header + "\n" + "\n".join(recent)
+    return result
+
+
+def extract_code_structure(train_py: str) -> str:
+    """Extract a structural summary of train.py for the implement prompt.
+
+    Gives the model a map of the file without requiring it to parse 500 lines.
+    """
+    lines = train_py.split("\n")
+    imports = []
+    classes = []
+    functions = []
+    constants = []
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("import ") or stripped.startswith("from "):
+            imports.append(stripped)
+        elif stripped.startswith("class "):
+            classes.append(f"  Line {i + 1}: {stripped.split(':')[0]}")
+        elif stripped.startswith("def ") and not line.startswith(" "):
+            functions.append(f"  Line {i + 1}: {stripped.split(':')[0]}")
+        elif "=" in stripped and stripped[0].isupper() and not stripped.startswith("#"):
+            name = stripped.split("=")[0].strip()
+            if name.isupper():
+                constants.append(f"  {stripped}")
+
+    result = "### Imports\n" + "\n".join(imports[:20])
+    result += "\n\n### Classes (do not rename or remove)\n" + "\n".join(classes)
+    result += "\n\n### Top-level Functions (do not rename or remove)\n" + "\n".join(functions)
+    result += "\n\n### Hyperparameter Constants\n" + "\n".join(constants)
+    result += f"\n\n### File length: {len(lines)} lines"
     return result
 
 

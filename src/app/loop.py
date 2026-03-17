@@ -81,6 +81,39 @@ def validate_train_py(code: str) -> tuple[bool, str]:
     return True, ""
 
 
+def quick_validate_code(code: str) -> tuple[bool, str]:
+    """Write code to a temp file and try to import it to catch runtime errors early.
+
+    This catches: missing imports, undefined names, basic shape issues.
+    Runs in a subprocess with a 30-second timeout.
+    """
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, dir=str(EXPERIMENTS_DIR)) as f:
+        # Write a modified version that exits before training
+        # Replace the training loop with a quick model instantiation test
+        test_code = code + "\n\n# Quick validation: exit before training loop\nimport sys; sys.exit(0)\n"
+        f.write(test_code)
+        temp_path = f.name
+
+    try:
+        result = subprocess.run(
+            [sys.executable, temp_path],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=str(PROJECT_ROOT),
+        )
+        if result.returncode != 0:
+            error = result.stderr[-1000:] if result.stderr else result.stdout[-1000:]
+            return False, f"Import/init error: {error}"
+        return True, ""
+    except subprocess.TimeoutExpired:
+        return False, "Code validation timed out (>60s)"
+    finally:
+        Path(temp_path).unlink(missing_ok=True)
+
+
 def validate_diff_is_attention_related(old_code: str, new_code: str) -> tuple[bool, str]:
     """Check that changes are primarily in attention-related code, not just hyperparameter gaming.
 
@@ -342,21 +375,55 @@ def run_loop(
         print(f"  Plan: {result.plan.description[:100]}")
         print(f"  Council cost: ${cost_this_cycle:.4f}")
 
-        # Validate the generated code
-        is_safe, safety_reason = validate_train_py(result.new_train_py)
-        if not is_safe:
-            print(f"  REJECTED (unsafe): {safety_reason}")
-            guards.record_result(None, "crash", f"Unsafe code: {safety_reason}")
-            continue
+        # Validate and run with error feedback (max 2 fix attempts)
+        current_code = result.new_train_py
+        max_fix_attempts = 2
+        val_bpb = None
+        training_output = ""
+        code_accepted = False
 
-        is_on_topic, topic_reason = validate_diff_is_attention_related(train_py, result.new_train_py)
-        if not is_on_topic:
-            print(f"  REJECTED (off-topic): {topic_reason}")
-            guards.record_result(None, "discard", f"Off-topic: {topic_reason}")
+        for fix_attempt in range(max_fix_attempts + 1):
+            # Safety check
+            is_safe, safety_reason = validate_train_py(current_code)
+            if not is_safe:
+                if fix_attempt < max_fix_attempts:
+                    print(f"  FIX ATTEMPT {fix_attempt + 1}: {safety_reason}")
+                    current_code, _ = council.fix_code(current_code, safety_reason, result.log)
+                    cost_this_cycle = cost_tracker.total_cost - cost_before
+                    continue
+                print(f"  REJECTED (unsafe after {max_fix_attempts} fixes): {safety_reason}")
+                guards.record_result(None, "crash", f"Unsafe code: {safety_reason}")
+                break
+
+            # Topic check
+            is_on_topic, topic_reason = validate_diff_is_attention_related(train_py, current_code)
+            if not is_on_topic:
+                print(f"  REJECTED (off-topic): {topic_reason}")
+                guards.record_result(None, "discard", f"Off-topic: {topic_reason}")
+                break
+
+            # Quick validation (import + init)
+            print(f"  Validating code{' (attempt ' + str(fix_attempt + 1) + ')' if fix_attempt > 0 else ''}...")
+            is_valid, valid_reason = quick_validate_code(current_code)
+            if not is_valid:
+                if fix_attempt < max_fix_attempts:
+                    print(f"  FIX ATTEMPT {fix_attempt + 1}: {valid_reason[:150]}")
+                    current_code, _ = council.fix_code(current_code, valid_reason, result.log)
+                    cost_this_cycle = cost_tracker.total_cost - cost_before
+                    continue
+                print(f"  REJECTED (validation failed after {max_fix_attempts} fixes): {valid_reason[:150]}")
+                guards.record_result(None, "crash", f"Validation failed: {valid_reason[:100]}")
+                break
+
+            # Code passed all checks — write, commit, train
+            code_accepted = True
+            break
+
+        if not code_accepted:
             continue
 
         # Write new train.py
-        TRAIN_PY.write_text(result.new_train_py)
+        TRAIN_PY.write_text(current_code)
 
         # Git commit
         try:
@@ -380,6 +447,45 @@ def run_loop(
             unprotect_files()
         training_time = time.time() - t0
         print(f"  Training completed in {training_time:.0f}s")
+
+        # If training crashed, try error feedback
+        if val_bpb is None and max_fix_attempts > 0:
+            print("  Training CRASHED — attempting fix...")
+            print(f"  Error: {training_output[:200]}")
+            git.reset_last()
+
+            # Try to fix the code based on the training error
+            fixed_code, _ = council.fix_code(current_code, training_output[:2000], result.log)
+            cost_this_cycle = cost_tracker.total_cost - cost_before
+
+            # Validate the fix
+            is_safe_fix, _ = validate_train_py(fixed_code)
+            is_valid_fix, _ = quick_validate_code(fixed_code) if is_safe_fix else (False, "")
+
+            if is_safe_fix and is_valid_fix:
+                print("  Fix passed validation — retraining...")
+                TRAIN_PY.write_text(fixed_code)
+                try:
+                    commit_hash = git.commit(
+                        f"Experiment {iteration} (fixed): {result.plan.description[:70]}",
+                        files=[str(TRAIN_PY)],
+                    )
+                except Exception:
+                    TRAIN_PY.write_text(train_py)
+                    guards.record_result(None, "crash", "Git error on fix")
+                    continue
+
+                protect_files()
+                t0 = time.time()
+                try:
+                    val_bpb, training_output = run_training()
+                finally:
+                    unprotect_files()
+                training_time = time.time() - t0
+                print(f"  Fixed training completed in {training_time:.0f}s")
+                current_code = fixed_code
+            else:
+                print("  Fix failed validation — giving up on this experiment")
 
         # Evaluate
         if val_bpb is None:

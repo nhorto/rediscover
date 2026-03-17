@@ -5,6 +5,8 @@ from datetime import datetime
 from src.domains.council.config import (
     CRITIQUE_PROMPT,
     CRITIQUE_SYSTEM,
+    IMPLEMENT_FIX_PROMPT,
+    IMPLEMENT_FIX_SYSTEM,
     IMPLEMENT_PROMPT,
     IMPLEMENT_SYSTEM,
     MAX_PAPERS_PER_QUERY,
@@ -15,6 +17,7 @@ from src.domains.council.config import (
     REFINE_SYSTEM,
     SCAN_PROMPT,
     SCAN_SYSTEM,
+    extract_code_structure,
     extract_hyperparams,
     format_papers_summary,
     format_results_history,
@@ -229,18 +232,23 @@ class CouncilService:
         )
 
     def _implement(self, plan: ExperimentPlan, train_py: str, log: list[dict]) -> tuple[str, str]:
-        """Write the actual code changes. Gets ONLY the plan and train.py — no research context."""
+        """Write the actual code changes. Gets plan + full train.py + code structure — no research context."""
         plan_text = (
             f"DESCRIPTION: {plan.description}\n"
             f"CODE_CHANGES: {plan.code_changes_summary}"
         )
-        prompt = IMPLEMENT_PROMPT.format(plan_text=plan_text, train_py=train_py)
+        code_structure = extract_code_structure(train_py)
+        prompt = IMPLEMENT_PROMPT.format(
+            plan_text=plan_text,
+            code_structure=code_structure,
+            train_py=train_py,
+        )
         response = self.llm.complete(
             role="implement",
             prompt=prompt,
             system=IMPLEMENT_SYSTEM,
-            temperature=0.3,  # Lower temperature for code generation
-            max_tokens=8192,  # train.py is ~500 lines, need room for full file
+            temperature=0.3,
+            max_tokens=8192,
         )
 
         log.append({
@@ -252,7 +260,35 @@ class CouncilService:
             "timestamp": datetime.now().isoformat(),
         })
 
-        # Clean the response — strip markdown fences if present
+        code = clean_code_response(response.content)
+        return code, response.content
+
+    def fix_code(self, broken_code: str, error_text: str, log: list[dict]) -> tuple[str, str]:
+        """Ask the implement model to fix broken code based on error feedback."""
+        # Truncate error to avoid blowing context
+        error_truncated = error_text[:2000]
+        prompt = IMPLEMENT_FIX_PROMPT.format(
+            error_text=error_truncated,
+            train_py=broken_code,
+        )
+        response = self.llm.complete(
+            role="implement",
+            prompt=prompt,
+            system=IMPLEMENT_FIX_SYSTEM,
+            temperature=0.2,
+            max_tokens=8192,
+        )
+
+        log.append({
+            "step": "implement_fix",
+            "model": response.model,
+            "input_tokens": response.input_tokens,
+            "output_tokens": response.output_tokens,
+            "cost": response.cost,
+            "timestamp": datetime.now().isoformat(),
+            "error_fixed": error_truncated[:200],
+        })
+
         code = clean_code_response(response.content)
         return code, response.content
 

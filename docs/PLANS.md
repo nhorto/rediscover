@@ -10,6 +10,7 @@
 | [phase-2-paper-ingestion.md](exec-plans/active/phase-2-paper-ingestion.md) | Active | Paper ingestion into Chroma knowledge base |
 | [hypothesis-similarity.md](exec-plans/active/hypothesis-similarity.md) | Active | Embedding-based hypothesis dedup with retry logic |
 | [cloud-gpu-modal.md](exec-plans/active/cloud-gpu-modal.md) | Active | Modal cloud GPU integration for experiment training |
+| [fix-code-generation.md](exec-plans/active/fix-code-generation.md) | Active | Fix implement step: more context, validation, error feedback |
 
 ## Completed Plans
 
