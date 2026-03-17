@@ -24,7 +24,40 @@ def _make_paper(arxiv_id="2301.00001", title="Test Paper"):
     )
 
 
-SAMPLE_TRAIN_PY = """
+SAMPLE_TRAIN_PY = """import torch
+import torch.nn as nn
+
+from prepare import MAX_SEQ_LEN
+
+@dataclass
+class GPTConfig:
+    n_head: int = 2
+    n_embd: int = 256
+    n_kv_head: int = 2
+
+def norm(x):
+    return x
+
+def has_ve(layer_idx, n_layer):
+    return layer_idx % 2 == 0
+
+def apply_rotary_emb(x, cos, sin):
+    return x
+
+class CausalSelfAttention(nn.Module):
+    def __init__(self, config, layer_idx):
+        super().__init__()
+        self.c_q = nn.Linear(config.n_embd, config.n_embd)
+
+    def forward(self, x, ve, cos_sin, window_size):
+        return self.c_q(x)
+
+class MLP(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+    def forward(self, x):
+        return x
+
 # ---------------------------------------------------------------------------
 # Hyperparameters (agents modify these)
 # ---------------------------------------------------------------------------
@@ -36,11 +69,7 @@ TOTAL_BATCH_SIZE = 2**16
 DEPTH = 4
 DEVICE_BATCH_SIZE = 16
 
-# ---------------------------------------------------------------------------
-# Setup
-# ---------------------------------------------------------------------------
-
-model = build_model()
+model = None
 """
 
 SAMPLE_RESULTS_TSV = """commit\tval_bpb\tmemory_gb\tstatus\tdescription
@@ -229,4 +258,4 @@ class TestCouncilServicePipeline:
 
         call_kwargs = mock_complete.call_args.kwargs
         assert call_kwargs["temperature"] == 0.3
-        assert call_kwargs["max_tokens"] == 8192
+        assert call_kwargs["max_tokens"] == 4096  # Zone output, not full file

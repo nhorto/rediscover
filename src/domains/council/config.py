@@ -107,56 +107,46 @@ ADDRESSES:
 - <how you addressed concern 1>
 - <how you addressed concern 2>"""
 
-IMPLEMENT_SYSTEM = """You are an expert PyTorch programmer. Write clean, correct, runnable code.
-You will receive a plan describing changes to make to a transformer training script.
-Return the COMPLETE modified train.py file. Do not use placeholders or comments like '# ... rest unchanged'.
-The entire file must be valid Python that can run with: uv run experiments/train.py
+IMPLEMENT_SYSTEM = """You are an expert PyTorch programmer modifying a transformer's attention mechanism.
+You will receive ONLY the modifiable zone of a training script — the part you can change.
+Return ONLY the modified zone code. The rest of the file is frozen and will be spliced around your output.
 
-CRITICAL RULES:
-1. The file must be syntactically valid Python — no unclosed parentheses, brackets, or strings.
-2. Every class and function from the original must remain unless the plan explicitly removes it.
-3. The output format (print statements at the end with val_bpb:, training_seconds:, etc.) must NOT change.
-4. The imports section must work — do not import packages that aren't installed.
-5. Keep the training loop structure intact — the time-based budget system must still work.
-6. Test your logic mentally: will tensor shapes match? Are dimensions consistent?
+Your output must contain:
+1. The GPTConfig dataclass (you may add new fields)
+2. Helper functions (norm, has_ve, apply_rotary_emb — you may modify or add new ones)
+3. The CausalSelfAttention class (you may change internals)
 
-MOST COMMON MISTAKE: Do NOT rewrite CausalSelfAttention from scratch. The existing class has
-a specific __init__(self, config, layer_idx) and forward(self, x, ve, cos_sin, window_size) interface
-that the rest of the code depends on. Modify the INTERNALS of these methods, do not change their signatures."""
+CRITICAL INTERFACE RULES:
+- CausalSelfAttention.__init__(self, config, layer_idx) — signature MUST stay the same
+- CausalSelfAttention.forward(self, x, ve, cos_sin, window_size) — signature MUST stay the same
+  - x: [B, T, C] input tensor
+  - ve: [B, T, n_kv_head * head_dim] value embeddings (or None)
+  - cos_sin: tuple of (cos, sin) for rotary embeddings
+  - window_size: tuple for sliding window
+- Block calls: self.attn(norm(x), ve, cos_sin, window_size)
+- The forward() must return a tensor of shape [B, T, C]
+
+You may add new helper functions, new nn.Module classes, or new GPTConfig fields.
+You may NOT add new imports (the frozen code handles imports).
+Return ONLY the Python code, no markdown fences, no explanation."""
 
 IMPLEMENT_PROMPT = """## Implementation Plan
 {plan_text}
 
-## Code Structure (DO NOT break these interfaces)
-{code_structure}
+{frozen_context}
 
-## CRITICAL: CausalSelfAttention Interface (DO NOT CHANGE)
-The existing CausalSelfAttention class has this interface that MUST be preserved:
-- __init__(self, config, layer_idx) — receives GPTConfig and layer index
-- forward(self, x, ve, cos_sin, window_size) — receives:
-  - x: [B, T, C] input tensor
-  - ve: [B, T, n_kv_head * head_dim] value embeddings (or None)
-  - cos_sin: tuple of (cos, sin) for rotary embeddings
-  - window_size: tuple for sliding window attention
-- The Block class calls: self.attn(norm(x), ve, cos_sin, window_size)
-- You may modify what happens INSIDE forward(), but the signature must stay the same.
-
-## Current train.py (COMPLETE FILE — modify and return the full file)
+## Current Modifiable Zone (ONLY this code — modify and return)
 ```python
-{train_py}
+{zone_code}
 ```
 
-Apply the changes described in the plan. Modify the INTERNALS of CausalSelfAttention.forward()
-and/or __init__(). Do NOT change the method signatures. Keep everything else EXACTLY as-is.
+Modify this code according to the plan. You may:
+- Add new fields to GPTConfig
+- Add new helper functions or nn.Module classes
+- Modify CausalSelfAttention internals (keep __init__ and forward signatures)
+- Modify norm(), has_ve(), apply_rotary_emb()
 
-RULES:
-- Return the COMPLETE modified train.py file
-- Do not change class/method signatures (especially CausalSelfAttention.__init__ and forward)
-- Do not add new import dependencies beyond what is already imported
-- Do not change TIME_BUDGET, evaluation logic, or the output format at the end
-- Do not change the optimizer setup, training loop, or data loading
-- Ensure all tensor shapes are consistent (check dimensions carefully)
-- Return ONLY the Python code, no markdown fences, no explanation"""
+Return ONLY the modified zone code. No imports, no MLP, no Block, no GPT class, no training loop."""
 
 IMPLEMENT_FIX_SYSTEM = """You are an expert PyTorch programmer fixing a broken training script.
 The previous version of train.py had an error. Fix ONLY the error — do not make other changes.

@@ -1,0 +1,120 @@
+# Targeted Code Generation — Patch Zone Approach
+
+> Goal: Replace full-file rewrite with targeted zone editing to eliminate syntax errors.
+> Status: IN PROGRESS
+> Started: 2026-03-17
+> Branch: feature/targeted-code-generation
+
+## Problem
+
+The implement step asks the model to rewrite all ~500 lines of train.py. The model consistently
+produces syntax errors (unclosed parentheses) around line 350-370. 100% crash rate across 8+ attempts.
+
+## Solution: Modifiable Zone
+
+Instead of rewriting the whole file, the model only outputs the "modifiable zone" — the parts of
+train.py it's allowed to change. We extract that zone, send it to the model, get back the modified
+version, and splice it back into the unchanged surrounding code.
+
+## What the Model CAN Modify
+
+```
+MODIFIABLE ZONE (extracted and sent to the model):
+├── GPTConfig dataclass (can add new fields like feature_dim, rank, etc.)
+├── Helper functions (norm, has_ve, apply_rotary_emb — can modify or add new ones)
+└── CausalSelfAttention class (can change internals, must preserve interface)
+```
+
+This covers everything the model needs to innovate on attention:
+- Add new helper functions (feature maps, kernel functions, etc.)
+- Add new config parameters (feature_dim, rank, num_random_features, etc.)
+- Rewrite the attention forward pass (linear attention, sparse, etc.)
+- Modify how rotary embeddings or value embeddings are applied
+- Change the head structure (different KV sharing schemes, etc.)
+
+## What the Model CANNOT Modify
+
+```
+FROZEN (kept exactly as-is, never sent to the model):
+├── Imports
+├── MLP class
+├── Block class
+├── GPT class (model init, forward, optimizer setup)
+├── MuonAdamW optimizer
+├── Hyperparameters section
+├── Training loop
+├── Evaluation and output
+└── Setup code (device detection, data loading, etc.)
+```
+
+## Progress
+
+- [ ] Create src/app/code_splicing.py — extract/replace modifiable zone from train.py
+- [ ] Update council config — new implement prompt that only asks for the zone
+- [ ] Update council service — _implement returns zone code, loop does the splicing
+- [ ] Update loop.py — splice zone into train.py before validation/training
+- [ ] Tests for extraction and splicing
+- [ ] Code review
+- [ ] Ruff + pytest pass
+- [ ] Test run: does the model produce valid 40-80 line patches?
+
+## Design: Code Splicing
+
+### Zone Boundaries
+
+The modifiable zone starts at `@dataclass` (GPTConfig) and ends at `class MLP`.
+Everything between these markers is extractable and replaceable.
+
+```python
+# --- FROZEN: imports and env setup ---
+import os
+...
+from prepare import MAX_SEQ_LEN, TIME_BUDGET, Tokenizer, make_dataloader, evaluate_bpb
+
+# ======= MODIFIABLE ZONE START =======
+
+@dataclass
+class GPTConfig:
+    ...
+
+def norm(x):
+    ...
+
+def has_ve(layer_idx, n_layer):
+    ...
+
+def apply_rotary_emb(x, cos, sin):
+    ...
+
+class CausalSelfAttention(nn.Module):
+    ...
+
+# ======= MODIFIABLE ZONE END =======
+
+class MLP(nn.Module):
+    ...
+# --- FROZEN: everything after MLP ---
+```
+
+### Implementation
+
+```python
+def extract_modifiable_zone(train_py: str) -> tuple[str, str, str]:
+    """Split train.py into (before_zone, zone, after_zone).
+
+    Returns three strings that concatenate to the original file.
+    """
+    ...
+
+def replace_modifiable_zone(train_py: str, new_zone: str) -> str:
+    """Replace the modifiable zone in train.py with new code."""
+    before, _, after = extract_modifiable_zone(train_py)
+    return before + new_zone + after
+```
+
+## Exit Criteria
+
+- Model only generates ~60-100 lines (the zone) instead of ~500
+- Syntax errors eliminated (zone is small enough for reliable generation)
+- At least 1 experiment produces a successful training run
+- Model can add new helper functions and config params within the zone
