@@ -10,3 +10,9 @@ reverted	N/A	0.0	crash	CRASH: FLuRKA low-rank + kernel attention (zone approach,
 reverted	1.842817	0.0	discard	DISCARD: Nystrom variant with structured sampling (val_bpb=1.842817)
 reverted	N/A	0.0	crash	CRASH: Linear attention with GLU (optimizer IndexError on 1D params)
 reverted	2.347710	0.0	discard	DISCARD: Kernelized attention (val_bpb=2.347710)
+d581102	1.675790	0.0	keep	KEEP: Implement a dynamic sparse attention mechanism that adapts k (val_bpb=1.675790)
+reverted	N/A	0.0	crash	CRASH: This experiment implements Linformer-style linear attention 
+reverted	N/A	0.0	crash	CRASH: This experiment modifies the CausalSelfAttention class in `t
+41123cf	1.675352	0.0	keep	KEEP: Implement the Performer FAVOR+ mechanism in the `CausalSelfA (val_bpb=1.675352)
+reverted	1.676400	0.0	discard	DISCARD: Implement a prototype of Reformer-style LSH attention in the (val_bpb=1.676400)
+reverted	1.680573	0.0	discard	DISCARD: This experiment modifies the `CausalSelfAttention` class to  (val_bpb=1.680573)

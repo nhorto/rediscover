@@ -203,7 +203,7 @@ What the system actually delivers today:
 - **Literature scanning** — Date-filtered arXiv API search + SPECTER embeddings + ChromaDB vector storage and retrieval
 - **Council pipeline** — Scan, Propose, Critique, Refine, Implement (5 LLM roles with role-based model routing)
 - **Research loop with guards** — Budget cap, stuck detection, error cascade recovery, embedding-based hypothesis similarity check
-- **66 passing unit tests** across all providers and domains
+- **178 passing unit tests** across all providers, domains, and architecture enforcement
 - **Cost tracking** — Per-call cost estimation and cumulative budget enforcement via CostTracker
 - **Git-based experiment logging** — Each experiment is a git commit; failed experiments are reverted with `git reset`
 - **Architecture enforcement tests** — Import direction, provider isolation, circular dependency detection, file size limits, no hardcoded secrets
@@ -218,4 +218,4 @@ Honest list of what is not built:
 - **No paper writing or publication** — The system discovers and validates, it does not write papers
 - **No embedding-based validation** — Validation domain exists with keyword scoring; embedding scoring requires SPECTER model loaded
 - **No CI/CD pipeline** — Tests run locally via `uv run pytest`
-- **Phase 2+ not started** — Paper ingestion, hypothesis dedup, focused research direction are in planning
+- **Phase 4+ not started** — Overnight runs, multi-cutoff comparison, domain expansion are planned

@@ -70,7 +70,14 @@ FROZEN (kept exactly as-is, never sent to the model):
 - Error feedback catches tracebacks but can't resolve them in 2 attempts
 - Cost: ~$0.08 per council cycle (50% cheaper — less output tokens)
 
-## Status: IN PROGRESS — syntax errors fixed, runtime errors remain
+## Status: COMPLETE — zone approach working, 66% success rate in production runs
+
+### Run 3 (improved prompts + quick_validate + fix_code): Production
+- ~66% success rate (4 keeps out of ~14 experiments that got past validation)
+- Best val_bpb: 1.675352 (5% improvement over baseline 1.763539)
+- Quick validate catches shape mismatches before 5-min training
+- Fix_code with frozen context resolves some runtime errors
+- Cost: ~$0.07-0.25 per council cycle
 
 ## Design: Code Splicing
 

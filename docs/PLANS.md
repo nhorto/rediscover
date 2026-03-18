@@ -8,7 +8,6 @@
 |------|--------|-------------|
 | [phase-roadmap.md](exec-plans/active/phase-roadmap.md) | Active | Full project roadmap: Phases 1-8 |
 | [cloud-gpu-modal.md](exec-plans/active/cloud-gpu-modal.md) | Active | Modal cloud GPU integration for experiment training |
-| [targeted-code-generation.md](exec-plans/active/targeted-code-generation.md) | Active | Zone-based code generation to eliminate syntax errors |
 | [batch-improvements.md](exec-plans/active/batch-improvements.md) | Active | Multiple improvements from user feedback |
 
 ## Completed Plans
@@ -25,6 +24,7 @@
 | [hypothesis-similarity.md](exec-plans/completed/hypothesis-similarity.md) | 2026-03-17 | Embedding-based hypothesis dedup with retry logic |
 | [fix-code-generation.md](exec-plans/completed/fix-code-generation.md) | 2026-03-17 | Fix implement step (superseded by targeted-code-generation) |
 | [phase-2-paper-ingestion.md](exec-plans/completed/phase-2-paper-ingestion.md) | 2026-03-17 | Paper ingestion into Chroma knowledge base (3,000+ papers) |
+| [targeted-code-generation.md](exec-plans/completed/targeted-code-generation.md) | 2026-03-17 | Zone-based code generation — 66% success rate, 5% val_bpb improvement |
 
 ## Tech Debt
 
