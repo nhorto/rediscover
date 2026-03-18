@@ -1,7 +1,7 @@
 # Fix Code Generation Quality
 
 > Goal: Reduce crash rate by improving context, validation, and error feedback for the implement step.
-> Status: IN PROGRESS
+> Status: SUPERSEDED by targeted-code-generation.md (zone-based approach)
 > Started: 2026-03-17
 
 ## Problem

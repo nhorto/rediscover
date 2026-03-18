@@ -49,14 +49,28 @@ FROZEN (kept exactly as-is, never sent to the model):
 
 ## Progress
 
-- [ ] Create src/app/code_splicing.py — extract/replace modifiable zone from train.py
-- [ ] Update council config — new implement prompt that only asks for the zone
-- [ ] Update council service — _implement returns zone code, loop does the splicing
-- [ ] Update loop.py — splice zone into train.py before validation/training
-- [ ] Tests for extraction and splicing
-- [ ] Code review
-- [ ] Ruff + pytest pass
-- [ ] Test run: does the model produce valid 40-80 line patches?
+- [x] Create src/utils/code_splicing.py — extract/replace modifiable zone from train.py
+- [x] Update council config — zone-only implement prompt with frozen context
+- [x] Update council service — _implement extracts zone, splices result back
+- [x] fix_code also uses zone extraction for targeted fixes
+- [x] Tests for extraction and splicing (8 tests)
+- [x] Fix eval() false positive (model.eval() is standard PyTorch)
+- [x] Code review — moved code_splicing to utils (architecture compliance), service under 300 lines
+- [x] Ruff + pytest 143 pass
+
+## Test Results
+
+### Run 1 (pre-fix): Full file rewrite
+- 100% syntax error rate (unclosed parens around line 350-370)
+- Cost: ~$0.15 per council cycle
+
+### Run 2 (zone approach): Targeted zone editing
+- 0% syntax errors (zone is only ~60-100 lines)
+- New issue: runtime errors during model init (shape mismatches in forward pass)
+- Error feedback catches tracebacks but can't resolve them in 2 attempts
+- Cost: ~$0.08 per council cycle (50% cheaper — less output tokens)
+
+## Status: IN PROGRESS — syntax errors fixed, runtime errors remain
 
 ## Design: Code Splicing
 
