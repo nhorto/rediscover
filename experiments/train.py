@@ -42,6 +42,7 @@ class GPTConfig:
     window_pattern: str = "SSSL"
     num_samples: int = 64  # New field for Nyström approximation
     top_k: int = 64  # New field for dynamic sparse attention
+    dynamic_threshold: bool = True  # New field for enabling dynamic thresholding
 
 
 def norm(x):
@@ -71,6 +72,7 @@ class CausalSelfAttention(nn.Module):
         self.head_dim = self.n_embd // self.n_head
         self.num_samples = config.num_samples
         self.top_k = config.top_k
+        self.dynamic_threshold = nn.Parameter(torch.zeros(self.n_head))  # Initialize dynamic threshold
         assert self.n_embd % self.n_head == 0
         assert self.n_kv_head <= self.n_head and self.n_head % self.n_kv_head == 0
         self.c_q = nn.Linear(self.n_embd, self.n_head * self.head_dim, bias=False)
@@ -112,6 +114,10 @@ class CausalSelfAttention(nn.Module):
         q = q.transpose(1, 2)
         k = k.transpose(1, 2)
         v = v.transpose(1, 2)
+
+        # Apply dynamic thresholding
+        for head in range(self.n_head):
+            q[:, head][q[:, head] < self.dynamic_threshold[head]] = 0
 
         dynamic_output, _ = self.compute_dynamic_sparse_attention(q, k, v, self.top_k)
 
