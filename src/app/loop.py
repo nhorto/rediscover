@@ -114,6 +114,11 @@ def validate_zone_structure(code: str) -> tuple[bool, str]:
     if bias_match:
         return False, "nn.Linear with bias=True will crash MuonAdamW optimizer — use bias=False"
 
+    # Check for 1D nn.Parameter (MuonAdamW requires all params to be 2D+)
+    param_1d = re.search(r'nn\.Parameter\(torch\.\w+\(\s*\d+\s*\)', code)
+    if param_1d:
+        return False, f"1D nn.Parameter found ({param_1d.group(0)}) — MuonAdamW crashes on <2D params. Use 2D shape like (1, n) or register as buffer"
+
     # Check CausalSelfAttention.forward signature
     forward_match = re.search(r'def forward\(self,\s*(\w+)', code)
     if forward_match:

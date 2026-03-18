@@ -428,7 +428,7 @@ class MuonAdamW(torch.optim.Optimizer):
             self.adamw_step_fn(p, grad, state["exp_avg"], state["exp_avg_sq"], self._adamw_step_t, self._adamw_lr_t, self._adamw_beta1_t, self._adamw_beta2_t, self._adamw_eps_t, self._adamw_wd_t)
 
     def _step_muon(self, group):
-        params = group["params"]
+        params = [p for p in group["params"] if p.grad is not None]
         if not params:
             return
         p = params[0]
