@@ -98,6 +98,15 @@ class TestLoopGuards:
         assert status.should_force_novelty is True
         assert "SIMPLER" in status.novelty_message
 
+    def test_error_hard_stop(self):
+        guards = LoopGuards(error_hard_stop=5)
+        tracker = CostTracker()
+        for i in range(5):
+            guards.record_result(None, "crash", f"broken {i}")
+        status = guards.check(tracker)
+        assert status.should_stop is True
+        assert "cascade" in status.reason.lower()
+
     def test_no_guard_triggered(self):
         guards = LoopGuards()
         tracker = CostTracker()

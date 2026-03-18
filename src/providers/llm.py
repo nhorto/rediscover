@@ -42,7 +42,7 @@ class LLMProvider:
     model_map: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_MODEL_MAP))
     cost_tracker: CostTracker = field(default_factory=CostTracker)
     temperature: float = 0.7
-    max_tokens: int = 4096
+    max_tokens: int = 2048
 
     def _call(
         self,

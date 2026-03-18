@@ -43,6 +43,7 @@ class LoopGuards:
     budget_limit: float = 50.0
     stuck_threshold: int = 20  # no improvement in this many experiments → force novelty
     error_cascade_limit: int = 3  # consecutive crashes → force different approach
+    error_hard_stop: int = 10  # consecutive crashes → stop the loop entirely
     similarity_threshold: float = 0.9  # cosine sim between hypotheses → reject
     max_hypothesis_history: int = 10  # how many past hypotheses to check against
 
@@ -139,7 +140,14 @@ class LoopGuards:
                 ),
             )
 
-        # Error cascade
+        # Error hard stop — if everything fails repeatedly, something is fundamentally broken
+        if self.consecutive_errors >= self.error_hard_stop:
+            return GuardStatus(
+                should_stop=True,
+                reason=f"Error cascade: {self.consecutive_errors} consecutive failures — stopping loop",
+            )
+
+        # Error cascade — force different approach
         if self.consecutive_errors >= self.error_cascade_limit:
             return GuardStatus(
                 should_stop=False,
