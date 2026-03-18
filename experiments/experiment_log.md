@@ -281,3 +281,40 @@ EXPECTED IMPACT:
 **Cost this cycle:** $0.1375
 **Cumulative cost:** $0.2796
 ---
+
+## Experiment 5 — 2026-03-18 15:17:50
+**Hypothesis:** I hypothesize that introducing a dual-layer attention mechanism that separates the global and local interactions of tokens can improve the efficiency of information extraction in attention, leading to a reduction in validation bits-per-byte (val_bpb). The assumption that attention needs to treat all tokens equally may not hold, as some tokens contribute more significantly to the overall context than others. By allowing a coarse global attention layer to capture broad dependencies and a fine local attention layer to focus on immediate context, we can optimize attention computation and reduce redundancy.
+**Approach:** I propose to modify the `CausalSelfAttention` class to incorporate two distinct attention mechanisms operating in tandem: a global attention layer that computes a sparse attention matrix across all tokens, and a local attention layer that uses a sliding window approach for immediate neighbors. This dual-layer approach is inspired by the concept of hierarchical attention seen in some models but applies it specifically within the attention mechanism itself. The global attention will utilize a learned attention pattern that focuses on a fixed number of key tokens (for example, the top-k most relevant tokens based on a learned scoring mechanism), while the local attention will operate within a defined window size around each token. Both layers will output their respective weighted representations, which can then be combined to form the final output. This allows for a more targeted approach to attention, potentially reducing the O(N²) complexity by limiting how many tokens interact in detail.
+**Papers consulted:** Reproduction Report on "Learn to Pay Attention", ExGate: Externally Controlled Gating for Feature-based Atten, NeuroX: A Toolkit for Analyzing Individual Neurons in Neural
+**Critique:** The proposal presents an interesting avenue for improving attention mechanisms by separating global and local interactions. However, it risks lacking originality if similar techniques have been previo
+**Plan:** This experiment introduces a dynamic dual-layer attention mechanism that separates global and local interactions of tokens, enhancing the model's adaptability and effectiveness in attention calculations while addressing concerns about oversimplification and model complexity.
+**Result:** val_bpb=CRASH (crash)
+**Cost this cycle:** $0.0277
+**Cumulative cost:** $0.1140
+---
+
+## Experiment 8 — 2026-03-18 15:24:55
+**Hypothesis:** I believe that attention mechanisms can benefit from introducing a **multi-scale attention framework** that combines both local and global attention patterns. This approach would involve using different kernel sizes for attention computation at various layers, allowing the model to capture both fine-grained details and broader contextual information. By applying a fixed local attention mechanism in the early layers and a global attention mechanism in the later layers, we can reduce redundancy and improve the overall efficiency of the attention process.
+**Approach:** Specifically, I propose to modify the `CausalSelfAttention` class to implement two different attention mechanisms based on the layer depth:
+1. In the first two layers (local attention), we will use a fixed window-based attention mechanism (e.g., sliding window attention) that focuses on a limited context size (e.g., 32 tokens). This will help capture local patterns and dependencies effectively.
+2. In the last two layers (global attention), we will implement a global attention mechanism that allows for full attention across all tokens, but with a learnable scaling factor that can adaptively control the extent of focusing on local vs. global context. This scaling factor could be learned through training, allowing the model to prioritize one type of attention depending on the input data characteristics.
+
+This approach is inspired by the idea of **multi-head attention** but extends it by separating the mechanisms based on the layer depth, which hasn't been explicitly tested in prior work.
+**Papers consulted:** Attention Is Not All You Need Anymore, Linear Log-Normal Attention with Unbiased Concentration, Which Transformer to Favor: A Comparative Analysis of Effici
+**Critique:** The proposal presents an interesting concept that integrates local and global attention mechanisms, but it risks being perceived as a rehash of existing techniques without sufficient novelty. More cla
+**Plan:** This experiment implements a multi-scale attention framework within the `CausalSelfAttention` class by using local attention in the first two layers and global attention in the last two layers, incorporating a learnable scaling factor for adaptive attention weighting.
+**Result:** val_bpb=CRASH (crash)
+**Cost this cycle:** $0.0417
+**Cumulative cost:** $0.2348
+---
+
+## Experiment 10 — 2026-03-18 15:30:36
+**Hypothesis:** The current assumption that all head representations in multi-head attention should be computed independently may be suboptimal. By allowing heads to share a portion of their query or key representations while maintaining separate value representations, we can reduce redundancy and leverage shared information more effectively. This could lead to a more compact representation and improved efficiency in attention computation, ultimately lowering validation bits-per-byte (val_bpb).
+**Approach:** I propose a hybrid attention mechanism that combines shared and independent attention heads. Specifically, we will modify the `CausalSelfAttention` class to implement a dual-layer head structure. In this structure, each head will compute its query independently, but the keys of all heads will share a common low-dimensional key representation that is learned during training. The values will remain independent per head, preserving the diversity of information. This approach is distinct from existing shared key methods as it allows for independent queries and values while still benefiting from a shared key representation, thus reducing the dimensionality of the keys and potentially eliminating redundancy.
+**Papers consulted:** Faster Causal Attention Over Large Sequences Through Sparse , The Curse of Dense Low-Dimensional Information Retrieval for, One Pass Streaming Algorithm for Super Long Token Attention 
+**Critique:** The proposal presents an interesting hypothesis regarding the potential benefits of shared key representations in multi-head attention; however, the feasibility of implementation and the risk of perfo
+**Plan:** This experiment implements a phased approach to integrating shared key representations in a hybrid attention mechanism by first testing the concept with a single attention head to assess performance and feasibility.
+**Result:** val_bpb=CRASH (crash)
+**Cost this cycle:** $0.0545
+**Cumulative cost:** $0.3203
+---

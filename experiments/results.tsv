@@ -19,3 +19,6 @@ reverted	1.680573	0.0	discard	DISCARD: This experiment modifies the `CausalSelfA
 reverted	N/A	0.0	crash	CRASH: This experiment introduces a hierarchical attention mechanis
 reverted	N/A	0.0	crash	CRASH: This experiment modifies the attention mechanism to use a dy
 reverted	N/A	0.0	crash	CRASH: This experiment integrates a hybrid attention mechanism comb
+reverted	N/A	0.0	crash	CRASH: This experiment introduces a dynamic dual-layer attention me
+reverted	N/A	0.0	crash	CRASH: This experiment implements a multi-scale attention framework
+reverted	N/A	0.0	crash	CRASH: This experiment implements a phased approach to integrating 
