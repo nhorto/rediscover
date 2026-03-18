@@ -1,10 +1,15 @@
 """LLM provider: unified interface for all model calls via litellm."""
 
+import signal
 from dataclasses import dataclass, field
 
 import litellm
 
 from src.utils.costs import CostTracker
+
+
+class APITimeoutError(Exception):
+    """Raised when an API call exceeds the hard timeout."""
 
 # Suppress litellm's verbose logging
 litellm.suppress_debug_info = True
@@ -15,11 +20,11 @@ litellm.suppress_debug_info = True
 # NOTE: o1 has compatibility issues with litellm (returns None content).
 # Using gpt-4o-2024-05-13 for all roles until o1 support is fixed.
 DEFAULT_MODEL_MAP: dict[str, str] = {
-    "scan": "openrouter/openai/gpt-4o-2024-05-13",      # Oct 2023 cutoff
-    "propose": "openrouter/openai/gpt-4o-2024-05-13",    # Oct 2023 cutoff
-    "critique": "openrouter/openai/gpt-4o-2024-05-13",   # Oct 2023 cutoff
-    "refine": "openrouter/openai/gpt-4o-2024-05-13",     # Oct 2023 cutoff
-    "implement": "openrouter/openai/gpt-4o-2024-05-13",  # Oct 2023 cutoff
+    "scan": "openrouter/openai/gpt-4o-mini",          # Oct 2023 cutoff, faster
+    "propose": "openrouter/openai/gpt-4o-mini",        # Oct 2023 cutoff, faster
+    "critique": "openrouter/openai/gpt-4o-mini",       # Oct 2023 cutoff, faster
+    "refine": "openrouter/openai/gpt-4o-mini",         # Oct 2023 cutoff, faster
+    "implement": "openrouter/openai/gpt-4o-mini",      # Oct 2023 cutoff, faster
 }
 
 
@@ -61,13 +66,23 @@ class LLMProvider:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
 
-        response = litellm.completion(
-            model=model,
-            messages=messages,
-            temperature=temperature if temperature is not None else self.temperature,
-            max_tokens=max_tokens if max_tokens is not None else self.max_tokens,
-            timeout=300,  # 5-minute timeout per API call
-        )
+        # Hard timeout via signal (litellm's timeout doesn't always fire)
+        def _timeout_handler(signum, frame):
+            raise APITimeoutError("API call exceeded 120s hard timeout")
+
+        old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+        signal.alarm(120)  # 2-minute hard timeout
+        try:
+            response = litellm.completion(
+                model=model,
+                messages=messages,
+                temperature=temperature if temperature is not None else self.temperature,
+                max_tokens=max_tokens if max_tokens is not None else self.max_tokens,
+                timeout=90,  # litellm soft timeout
+            )
+        finally:
+            signal.alarm(0)  # cancel alarm
+            signal.signal(signal.SIGALRM, old_handler)
 
         content = response.choices[0].message.content or ""
         usage = response.usage
