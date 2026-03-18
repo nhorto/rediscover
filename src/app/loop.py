@@ -606,6 +606,11 @@ def run_loop(
 
 
 if __name__ == "__main__":
+    # Force unbuffered output so logs appear in real-time when redirected
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, line_buffering=True)
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, line_buffering=True)
+
     parser = argparse.ArgumentParser(description="Rediscover autonomous research loop")
     parser.add_argument("--max-iterations", type=int, default=500, help="Maximum experiments to run")
     parser.add_argument("--budget", type=float, default=50.0, help="Maximum LLM spend in dollars")

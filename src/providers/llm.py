@@ -66,6 +66,7 @@ class LLMProvider:
             messages=messages,
             temperature=temperature if temperature is not None else self.temperature,
             max_tokens=max_tokens if max_tokens is not None else self.max_tokens,
+            timeout=120,  # 2-minute timeout per API call
         )
 
         content = response.choices[0].message.content or ""
