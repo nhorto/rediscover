@@ -46,6 +46,19 @@ DANGEROUS_PATTERNS = [
 ]
 
 
+def safe_fix_code(council, code: str, error: str, log: list) -> tuple[str, bool]:
+    """Try to fix code via council. Returns (fixed_code, success).
+
+    If the API call fails (timeout, etc.), returns the original code unchanged.
+    """
+    try:
+        fixed, _ = council.fix_code(code, error, log)
+        return fixed, True
+    except Exception as e:
+        print(f"  Fix API call failed: {type(e).__name__}: {str(e)[:100]}")
+        return code, False
+
+
 def read_file(path: Path) -> str:
     """Read a file and return its contents."""
     return path.read_text()
@@ -449,7 +462,9 @@ def run_loop(
             if not is_safe:
                 if fix_attempt < max_fix_attempts:
                     print(f"  FIX ATTEMPT {fix_attempt + 1}: {safety_reason}")
-                    current_code, _ = council.fix_code(current_code, safety_reason, result.log)
+                    current_code, ok = safe_fix_code(council, current_code, safety_reason, result.log)
+                    if not ok:
+                        break
                     cost_this_cycle = cost_tracker.total_cost - cost_before
                     continue
                 print(f"  REJECTED (unsafe after {max_fix_attempts} fixes): {safety_reason}")
@@ -461,7 +476,9 @@ def run_loop(
             if not is_structured:
                 if fix_attempt < max_fix_attempts:
                     print(f"  FIX ATTEMPT {fix_attempt + 1}: {struct_reason}")
-                    current_code, _ = council.fix_code(current_code, struct_reason, result.log)
+                    current_code, ok = safe_fix_code(council, current_code, struct_reason, result.log)
+                    if not ok:
+                        break
                     cost_this_cycle = cost_tracker.total_cost - cost_before
                     continue
                 print(f"  REJECTED (structure invalid after {max_fix_attempts} fixes): {struct_reason}")
@@ -481,7 +498,9 @@ def run_loop(
             if not is_valid:
                 if fix_attempt < max_fix_attempts:
                     print(f"  FIX ATTEMPT {fix_attempt + 1}: {valid_reason[:150]}")
-                    current_code, _ = council.fix_code(current_code, valid_reason, result.log)
+                    current_code, ok = safe_fix_code(council, current_code, valid_reason, result.log)
+                    if not ok:
+                        break
                     cost_this_cycle = cost_tracker.total_cost - cost_before
                     continue
                 print(f"  REJECTED (validation failed after {max_fix_attempts} fixes): {valid_reason[:150]}")
@@ -532,8 +551,11 @@ def run_loop(
             git.reset_last(preserve_files=PRESERVE_ON_RESET)
 
             # Try to fix the code based on the training error
-            fixed_code, _ = council.fix_code(current_code, training_output[:2000], result.log)
+            fixed_code, fix_ok = safe_fix_code(council, current_code, training_output[:2000], result.log)
             cost_this_cycle = cost_tracker.total_cost - cost_before
+            if not fix_ok:
+                print("  Fix API call failed — giving up on this experiment")
+                fixed_code = current_code  # ensure we don't train broken code
 
             # Validate the fix
             is_safe_fix, _ = validate_train_py(fixed_code)
