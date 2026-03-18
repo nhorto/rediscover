@@ -22,25 +22,30 @@ SCAN_PROMPT = """Given this research direction:
 
 {program_md}
 
-Generate {max_queries} focused search queries to find relevant papers on arXiv.
-Each query should explore a different angle of this research direction.
+Generate {max_queries} search queries to find papers that reveal PRINCIPLES, OPEN PROBLEMS, and TRADE-OFFS in this area.
+You are NOT looking for methods to copy — you're looking for understanding that will help you invent something new.
+Each query should explore a different angle.
 
 Return your queries in this exact format (one per line):
 QUERY: <search terms>
-RATIONALE: <why this query is useful>
+RATIONALE: <what understanding this will give you>
 ---
 QUERY: <search terms>
-RATIONALE: <why this query is useful>"""
+RATIONALE: <what understanding this will give you>"""
 
-PROPOSE_SYSTEM = """You are an autonomous ML researcher proposing experiments to improve a transformer model.
+PROPOSE_SYSTEM = """You are an autonomous ML researcher inventing novel improvements to transformer attention.
 You have knowledge only up to December 2023. Do not reference any work after this date.
-Your goal is to propose a single, specific, testable hypothesis that could lower validation bits-per-byte (val_bpb).
-Be concrete and specific. Vague proposals waste experiment time."""
+
+Your goal is to propose an ORIGINAL experiment — not to replicate a known technique from a paper.
+Papers are context (what's been tried, what principles work), not recipes to follow.
+The best proposals combine ideas in new ways, question assumptions, or explore directions papers haven't tried.
+
+Do NOT propose "implement [paper X's method]". Instead, reason from first principles about what could work better and why."""
 
 PROPOSE_PROMPT = """## Research Direction
 {program_md}
 
-## Relevant Papers
+## Literature Context (what's been tried — do NOT just reimplement these)
 {papers_summary}
 
 ## Recent Experiment Results (most recent first)
@@ -49,11 +54,17 @@ PROPOSE_PROMPT = """## Research Direction
 ## Current Model Hyperparameters
 {hyperparams}
 
-Based on the literature and past results, propose ONE specific experiment to try next.
+Propose ONE original experiment. Your proposal must go BEYOND the literature:
+- Combine ideas from different papers in a way that hasn't been tried
+- Question an assumption that existing methods take for granted
+- Apply a principle from the papers to a part of attention nobody has applied it to
+- Invent a mechanism inspired by (but different from) what you've read
+
+Do NOT just propose implementing a known method. If you cite a paper, explain what you're doing DIFFERENTLY.
 
 Return your proposal in this exact format:
-HYPOTHESIS: <what you think will improve val_bpb and why>
-APPROACH: <specific changes to make to the model/training>
+HYPOTHESIS: <what you think will improve val_bpb and why — explain your original insight>
+APPROACH: <specific changes to make — explain what's novel about this vs existing work>
 EXPECTED_IMPACT: <what improvement you expect and why>"""
 
 CRITIQUE_SYSTEM = """You are a critical reviewer evaluating ML research proposals.
@@ -72,6 +83,7 @@ Evaluate this proposal. Consider:
 2. Will this work at the model's small scale (4 layers, 256 dim, 11.5M params)?
 3. Can this be implemented within the existing train.py structure?
 4. Has something similar already been tried (check results)?
+5. Is this actually ORIGINAL, or is it just reimplementing a known technique? If it's just copying a paper, say so and suggest how to push it further.
 
 Return your critique in this exact format:
 CONCERNS:
@@ -82,7 +94,7 @@ SUGGESTIONS:
 - <suggestion 1>
 - <suggestion 2>
 
-OVERALL: <one paragraph assessment>"""
+OVERALL: <one paragraph assessment — flag if the proposal lacks originality>"""
 
 REFINE_SYSTEM = """You are an ML researcher refining a proposal based on peer review.
 You have knowledge only up to December 2023. Do not reference any work after this date.

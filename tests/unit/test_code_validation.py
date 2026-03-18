@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.app.loop import quick_validate_code, validate_train_py
+from src.app.loop import quick_validate_code, validate_train_py, validate_zone_structure
 from src.domains.council.helpers import extract_code_structure
 
 
@@ -97,3 +97,53 @@ class TestErrorFeedbackIntegration:
         from src.domains.council.config import IMPLEMENT_FIX_PROMPT, IMPLEMENT_FIX_SYSTEM
         assert "Error" in IMPLEMENT_FIX_PROMPT or "error" in IMPLEMENT_FIX_PROMPT
         assert "fix" in IMPLEMENT_FIX_SYSTEM.lower()
+
+
+@pytest.mark.unit
+class TestValidateZoneStructure:
+    GOOD_ZONE = """
+import torch
+import torch.nn as nn
+
+def norm(x):
+    return F.rms_norm(x, (x.size(-1),))
+
+class CausalSelfAttention(nn.Module):
+    def __init__(self, config, layer_idx):
+        super().__init__()
+        self.c_q = nn.Linear(256, 256, bias=False)
+
+    def forward(self, x, ve, cos_sin, window_size):
+        return x
+"""
+
+    def test_good_code_passes(self):
+        is_valid, reason = validate_zone_structure(self.GOOD_ZONE)
+        assert is_valid is True
+
+    def test_missing_norm_rejected(self):
+        code = self.GOOD_ZONE.replace("def norm(x):", "def normalize(x):")
+        is_valid, reason = validate_zone_structure(code)
+        assert is_valid is False
+        assert "norm()" in reason
+
+    def test_bias_true_rejected(self):
+        code = self.GOOD_ZONE.replace("bias=False", "bias=True")
+        is_valid, reason = validate_zone_structure(code)
+        assert is_valid is False
+        assert "bias" in reason.lower()
+
+    def test_missing_forward_param_rejected(self):
+        code = self.GOOD_ZONE.replace(
+            "def forward(self, x, ve, cos_sin, window_size):",
+            "def forward(self, x):",
+        )
+        is_valid, reason = validate_zone_structure(code)
+        assert is_valid is False
+        assert "ve" in reason or "cos_sin" in reason
+
+    def test_no_linear_is_fine(self):
+        """Code with no nn.Linear at all should pass (no bias issue)."""
+        code = "def norm(x):\n    pass\nclass CausalSelfAttention:\n    def forward(self, x, ve, cos_sin, window_size):\n        pass\n"
+        is_valid, reason = validate_zone_structure(code)
+        assert is_valid is True

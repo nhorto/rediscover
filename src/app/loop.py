@@ -84,6 +84,37 @@ def validate_train_py(code: str) -> tuple[bool, str]:
     return True, ""
 
 
+def validate_zone_structure(code: str) -> tuple[bool, str]:
+    """Check that the generated code preserves required structure.
+
+    Catches common model mistakes before expensive subprocess validation:
+    - norm() helper must exist
+    - No bias=True on nn.Linear (MuonAdamW crashes on 1D params)
+    - CausalSelfAttention.forward signature must match interface
+    """
+    # Check norm() function exists
+    if "def norm(" not in code:
+        return False, "Missing norm() helper function — it must be preserved"
+
+    # Check for bias=True on nn.Linear (causes MuonAdamW IndexError)
+    bias_match = re.search(r'nn\.Linear\([^)]*bias\s*=\s*True', code)
+    if bias_match:
+        return False, "nn.Linear with bias=True will crash MuonAdamW optimizer — use bias=False"
+
+    # Check CausalSelfAttention.forward signature
+    forward_match = re.search(r'def forward\(self,\s*(\w+)', code)
+    if forward_match:
+        # Must accept (self, x, ve, cos_sin, window_size)
+        full_sig = re.search(r'def forward\(self,[^)]+\)', code)
+        if full_sig:
+            sig = full_sig.group(0)
+            for param in ["ve", "cos_sin", "window_size"]:
+                if param not in sig:
+                    return False, f"forward() missing required parameter '{param}' — signature must be forward(self, x, ve, cos_sin, window_size)"
+
+    return True, ""
+
+
 def quick_validate_code(code: str) -> tuple[bool, str]:
     """Write code to a temp file and validate model init + one forward pass.
 
@@ -405,9 +436,9 @@ def run_loop(
         print(f"  Plan: {result.plan.description[:100]}")
         print(f"  Council cost: ${cost_this_cycle:.4f}")
 
-        # Validate and run with error feedback (max 2 fix attempts)
+        # Validate and run with error feedback (max 3 fix attempts)
         current_code = result.new_train_py
-        max_fix_attempts = 2
+        max_fix_attempts = 3
         val_bpb = None
         training_output = ""
         code_accepted = False
@@ -423,6 +454,18 @@ def run_loop(
                     continue
                 print(f"  REJECTED (unsafe after {max_fix_attempts} fixes): {safety_reason}")
                 guards.record_result(None, "crash", f"Unsafe code: {safety_reason}")
+                break
+
+            # Zone structure check (cheap string matching — catches norm/bias/signature issues)
+            is_structured, struct_reason = validate_zone_structure(current_code)
+            if not is_structured:
+                if fix_attempt < max_fix_attempts:
+                    print(f"  FIX ATTEMPT {fix_attempt + 1}: {struct_reason}")
+                    current_code, _ = council.fix_code(current_code, struct_reason, result.log)
+                    cost_this_cycle = cost_tracker.total_cost - cost_before
+                    continue
+                print(f"  REJECTED (structure invalid after {max_fix_attempts} fixes): {struct_reason}")
+                guards.record_result(None, "crash", f"Structure: {struct_reason}")
                 break
 
             # Topic check
