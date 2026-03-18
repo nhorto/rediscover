@@ -40,9 +40,9 @@ class GPTConfig:
     n_kv_head: int = 6
     n_embd: int = 768
     window_pattern: str = "SSSL"
-    num_samples: int = 64  # New field for Nyström approximation
-    top_k: int = 64  # New field for dynamic sparse attention
-    dynamic_threshold: bool = True  # New field for enabling dynamic thresholding
+    num_samples: int = 64  # For Nyström approximation
+    top_k: int = 64  # For dynamic sparse attention
+    gating: bool = True  # Enable gating mechanism
 
 
 def norm(x):
@@ -70,9 +70,7 @@ class CausalSelfAttention(nn.Module):
         self.n_kv_head = config.n_kv_head
         self.n_embd = config.n_embd
         self.head_dim = self.n_embd // self.n_head
-        self.num_samples = config.num_samples
-        self.top_k = config.top_k
-        self.dynamic_threshold = nn.Parameter(torch.zeros(self.n_head))  # Initialize dynamic threshold
+        self.gating = config.gating
         assert self.n_embd % self.n_head == 0
         assert self.n_kv_head <= self.n_head and self.n_head % self.n_kv_head == 0
         self.c_q = nn.Linear(self.n_embd, self.n_head * self.head_dim, bias=False)
@@ -83,16 +81,8 @@ class CausalSelfAttention(nn.Module):
         self.ve_gate = (
             nn.Linear(self.ve_gate_channels, self.n_kv_head, bias=False) if has_ve(layer_idx, config.n_layer) else None
         )
-
-    def compute_dynamic_sparse_attention(self, query, key, value, top_k):
-        attn_scores = torch.matmul(query, key.transpose(-2, -1))
-        top_k_scores, top_k_indices = torch.topk(attn_scores, top_k, dim=-1)
-        mask = torch.zeros_like(attn_scores)
-        mask.scatter_(-1, top_k_indices, 1.0)
-        sparse_attn_scores = attn_scores * mask
-        attn_weights = torch.nn.functional.softmax(sparse_attn_scores, dim=-1)
-        attn_output = torch.matmul(attn_weights, value)
-        return attn_output, attn_weights
+        if self.gating:
+            self.gate_layer = nn.Linear(self.head_dim, self.head_dim, bias=False)
 
     def forward(self, x, ve, cos_sin, window_size):
         B, T, C = x.size()
@@ -115,13 +105,17 @@ class CausalSelfAttention(nn.Module):
         k = k.transpose(1, 2)
         v = v.transpose(1, 2)
 
-        # Apply dynamic thresholding for the first n_head to focus on syntactic relationships
-        for head in range(self.n_head):
-            q[:, head][q[:, head] < self.dynamic_threshold[head]] = 0
+        # Apply gating mechanism
+        if self.gating:
+            gate = torch.sigmoid(self.gate_layer(q))  # Shape [B, n_head, T, head_dim]
+            q = q * gate
 
-        dynamic_output, _ = self.compute_dynamic_sparse_attention(q, k, v, self.top_k)
+        # Scaled Dot-Product Attention
+        attn_scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(self.head_dim)
+        attn_weights = torch.softmax(attn_scores, dim=-1)
+        y = torch.matmul(attn_weights, v)
 
-        y = dynamic_output.transpose(1, 2).contiguous().view(B, T, -1)
+        y = y.transpose(1, 2).contiguous().view(B, T, -1)
         y = self.c_proj(y)
         return y
 
