@@ -35,14 +35,14 @@ from prepare import MAX_SEQ_LEN, TIME_BUDGET, Tokenizer, evaluate_bpb, make_data
 class GPTConfig:
     sequence_len: int = 2048
     vocab_size: int = 32768
-    n_layer: int = 2  # Temporarily reduce for preliminary testing
+    n_layer: int = 2
     n_head: int = 6
     n_kv_head: int = 6
     n_embd: int = 768
     window_pattern: str = "SSSL"
-    num_samples: int = 64  # For Nyström approximation
-    top_k: int = 64  # For dynamic sparse attention
-    gating: bool = True  # Enable gating mechanism
+    num_samples: int = 64
+    top_k: int = 64
+    gating: bool = True
 
 
 def norm(x):
@@ -70,52 +70,51 @@ class CausalSelfAttention(nn.Module):
         self.n_kv_head = config.n_kv_head
         self.n_embd = config.n_embd
         self.head_dim = self.n_embd // self.n_head
-        self.gating = config.gating
         assert self.n_embd % self.n_head == 0
         assert self.n_kv_head <= self.n_head and self.n_head % self.n_kv_head == 0
         self.c_q = nn.Linear(self.n_embd, self.n_head * self.head_dim, bias=False)
         self.c_k = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
         self.c_v = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
-        self.c_proj = nn.Linear(self.n_embd, self.n_embd, bias=False)
+        self.c_proj = nn.Linear(self.n_embd * 2, self.n_embd, bias=False)
         self.ve_gate_channels = 32
         self.ve_gate = (
             nn.Linear(self.ve_gate_channels, self.n_kv_head, bias=False) if has_ve(layer_idx, config.n_layer) else None
         )
-        if self.gating:
-            self.gate_layer = nn.Linear(self.head_dim, self.head_dim, bias=False)
 
     def forward(self, x, ve, cos_sin, window_size):
         B, T, C = x.size()
         q = self.c_q(x).view(B, T, self.n_head, self.head_dim)
         k = self.c_k(x).view(B, T, self.n_kv_head, self.head_dim)
         v = self.c_v(x).view(B, T, self.n_kv_head, self.head_dim)
-
         if ve is not None:
             ve = ve.view(B, T, self.n_kv_head, self.head_dim)
             gate = 2 * torch.sigmoid(self.ve_gate(x[..., : self.ve_gate_channels]))
             v = v + gate.unsqueeze(-1) * ve
-
         cos, sin = cos_sin
         q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin)
-
+        q, k = norm(q), norm(k)
         k = k.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
         v = v.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
-
-        q = q.transpose(1, 2)
-        k = k.transpose(1, 2)
-        v = v.transpose(1, 2)
-
-        # Apply gating mechanism
-        if self.gating:
-            gate = torch.sigmoid(self.gate_layer(q))  # Shape [B, n_head, T, head_dim]
-            q = q * gate
-
-        # Scaled Dot-Product Attention
-        attn_scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(self.head_dim)
-        attn_weights = torch.softmax(attn_scores, dim=-1)
-        y = torch.matmul(attn_weights, v)
-
-        y = y.transpose(1, 2).contiguous().view(B, T, -1)
+        q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
+        
+        # Global attention
+        global_y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        
+        # Local attention with sliding window
+        if window_size is not None and (isinstance(window_size, int) and window_size < T):
+            mask = torch.ones(T, T, dtype=torch.bool, device=x.device).triu(1)
+            for i in range(T):
+                start = max(0, i - window_size + 1)
+                mask[i, start:i+1] = False
+            local_y = F.scaled_dot_product_attention(q, k, v, attn_mask=mask)
+        else:
+            local_y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        
+        global_y = global_y.transpose(1, 2).contiguous().view(B, T, -1)
+        local_y = local_y.transpose(1, 2).contiguous().view(B, T, -1)
+        
+        # Concatenate global and local outputs
+        y = torch.cat([global_y, local_y], dim=-1)
         y = self.c_proj(y)
         return y
 
