@@ -116,18 +116,8 @@ Your output must contain:
 2. Helper functions (norm, has_ve, apply_rotary_emb — you may modify or add new ones)
 3. The CausalSelfAttention class (you may change internals)
 
-CRITICAL INTERFACE RULES:
-- CausalSelfAttention.__init__(self, config, layer_idx) — signature MUST stay the same
-- CausalSelfAttention.forward(self, x, ve, cos_sin, window_size) — signature MUST stay the same
-  - x: [B, T, C] input tensor
-  - ve: [B, T, n_kv_head * head_dim] value embeddings (or None)
-  - cos_sin: tuple of (cos, sin) for rotary embeddings
-  - window_size: tuple for sliding window
-- Block calls: self.attn(norm(x), ve, cos_sin, window_size)
-- The forward() must return a tensor of shape [B, T, C]
-
 You may add new helper functions, new nn.Module classes, or new GPTConfig fields.
-You may NOT add new imports (the frozen code handles imports).
+You may NOT add new imports (the frozen code already has: torch, torch.nn, torch.nn.functional as F, math).
 Return ONLY the Python code, no markdown fences, no explanation."""
 
 IMPLEMENT_PROMPT = """## Implementation Plan
@@ -135,36 +125,53 @@ IMPLEMENT_PROMPT = """## Implementation Plan
 
 {frozen_context}
 
+## TENSOR SHAPE REFERENCE (verify your code matches these)
+With the current config (n_head=2, n_kv_head=2, n_embd=256, head_dim=128, sequence_len=2048):
+- x input to forward(): [B, T, 256]
+- After c_q(x): [B, T, 256] → view as [B, T, 2, 128]
+- After c_k(x): [B, T, 256] → view as [B, T, 2, 128]
+- After c_v(x): [B, T, 256] → view as [B, T, 2, 128]
+- ve (value embeddings): [B, T, 256] → view as [B, T, 2, 128] (or None)
+- cos_sin: each is [1, T, 1, 64] (half of head_dim)
+- After apply_rotary_emb: same shape as input [B, T, n_head, head_dim]
+- For SDPA: q,k,v must be [B, n_head, T, head_dim] (transpose dims 1,2)
+- Output of forward(): [B, T, 256] (must match input C dimension)
+
+## INTERFACE CONTRACT (DO NOT CHANGE)
+- __init__(self, config, layer_idx) — config is GPTConfig, layer_idx is int
+- forward(self, x, ve, cos_sin, window_size) → returns [B, T, C] tensor
+- c_proj must project back to n_embd dimension
+- If you replace the attention mechanism, the output shape MUST still be [B, T, C]
+
 ## Current Modifiable Zone (ONLY this code — modify and return)
 ```python
 {zone_code}
 ```
 
-Modify this code according to the plan. You may:
-- Add new fields to GPTConfig
-- Add new helper functions or nn.Module classes
-- Modify CausalSelfAttention internals (keep __init__ and forward signatures)
-- Modify norm(), has_ve(), apply_rotary_emb()
+Modify this code according to the plan. Return ONLY the modified zone code.
+No imports, no MLP, no Block, no GPT class, no training loop.
+Double-check all tensor shapes before returning."""
 
-Return ONLY the modified zone code. No imports, no MLP, no Block, no GPT class, no training loop."""
-
-IMPLEMENT_FIX_SYSTEM = """You are an expert PyTorch programmer fixing a broken training script.
-The previous version of train.py had an error. Fix ONLY the error — do not make other changes.
-Return the COMPLETE fixed train.py file."""
+IMPLEMENT_FIX_SYSTEM = """You are an expert PyTorch programmer fixing a broken attention mechanism.
+The previous code had an error. Fix ONLY the error — do not change the approach, just fix the bug.
+Return ONLY the fixed modifiable zone code (GPTConfig + helpers + CausalSelfAttention)."""
 
 IMPLEMENT_FIX_PROMPT = """## Error from Previous Attempt
 ```
 {error_text}
 ```
 
-## Broken train.py (COMPLETE FILE — fix and return the full file)
+## TENSOR SHAPE REFERENCE
+- x input: [B, T, 256], q/k/v after linear: [B, T, n_head, head_dim]
+- For SDPA: [B, n_head, T, head_dim]. Output must be [B, T, 256].
+- cos/sin for rotary: [1, T, 1, 64] (half head_dim)
+
+## Broken Code (fix and return)
 ```python
 {train_py}
 ```
 
-Fix the error described above. Return the COMPLETE fixed train.py file.
-Do not make any changes beyond what is needed to fix this specific error.
-Return ONLY the Python code, no markdown fences, no explanation."""
+Fix the error. Return ONLY the fixed zone code, no markdown fences, no explanation."""
 
 
 def extract_hyperparams(train_py: str) -> str:
