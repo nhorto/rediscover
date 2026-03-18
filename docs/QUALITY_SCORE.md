@@ -9,7 +9,7 @@
 | literature | A | A | A | B | Types, config, service (Chroma + SPECTER), arXiv provider — 4 tests |
 | council | A | A | A | A | Types, config (5 prompt templates), service (full pipeline), 18 tests |
 | experiments | B | B | - | C | Harness working — train.py + prepare.py running on MPS, baseline val_bpb=1.763539 |
-| validation | - | - | - | - | Not started |
+| validation | A | A | A | A | Types, config (7 breakthroughs), service (embedding + keyword scoring, reports), 27 tests |
 
 ## Provider Grades
 

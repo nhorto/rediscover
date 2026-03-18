@@ -36,8 +36,8 @@
 - [x] 3a: Build src/domains/validation/ — types, config, service
 - [x] 3b: Register post-cutoff breakthroughs with descriptions and key mechanisms (MLA, FA3, Mamba-2, etc.)
 - [x] 3c: Implement similarity scoring (embedding-based + keyword-based)
-- [ ] 3d: Build comparison report generator — for each agent proposal, score against all breakthroughs
-- [ ] 3e: Test with synthetic proposals (e.g., feed it a description of MLA and check it scores as "direct hit")
+- [x] 3d: Build comparison report generator — for each agent proposal, score against all breakthroughs
+- [x] 3e: Test with synthetic proposals (e.g., feed it a description of MLA and check it scores as "direct hit")
 
 **Exit criteria:** Can score any agent proposal against the breakthrough registry and produce a meaningful similarity rating.
 
