@@ -1,9 +1,9 @@
 # Cloud GPU Integration: Modal
 
 > Move experiment training from local MPS subprocess to Modal cloud GPU.
-> Status: **ACTIVE**
+> Status: **COMPLETE**
 > Created: 2026-03-17
-> Depends on: Phase 2 validation (loop must run end-to-end locally first)
+> Completed: 2026-03-18
 > Reference: docs/references/cloud-gpu-options.md
 
 ## Goal
