@@ -59,14 +59,16 @@ src/
 │   │
 │   ├── council/                 Multi-agent deliberation ✅
 │   │   ├── types.py             SearchQuery, Proposal, Critique, ExperimentPlan, CouncilResult
-│   │   ├── config.py            Prompt templates (5 roles), context helpers, tiered context limits
+│   │   ├── config.py            Prompt templates (5 roles), tiered context limits
+│   │   ├── helpers.py           Format helpers: extract_hyperparams, format_results_history, format_papers_summary
+│   │   ├── parsing.py           LLM response parsing: extract_field, parse_search_queries, clean_code_response
 │   │   ├── service.py           CouncilService: scan → propose → critique → refine → implement
 │   │   └── __init__.py
 │   │
-│   └── validation/              Retrodiction comparison (NOT YET BUILT)
-│       ├── types.py             Comparison, SimilarityScore types
-│       ├── config.py            Cutoff dates, breakthrough registry
-│       ├── service.py           Compare agent output vs post-cutoff research
+│   └── validation/              Retrodiction comparison ✅
+│       ├── types.py             SimilarityLevel, Breakthrough, SimilarityScore, ProposalComparison, ValidationReport
+│       ├── config.py            Breakthrough registry (MLA, FA3, Mamba-2, xLSTM, RWKV, GLA, DeepSeek-V3)
+│       ├── service.py           ValidationService: score proposals against breakthroughs, generate reports
 │       └── __init__.py
 │
 ├── providers/                   Cross-cutting concerns
@@ -214,6 +216,6 @@ Honest list of what is not built:
 - **No real-time monitoring** — Check experiment_log.md and results.tsv manually
 - **No multi-GPU or distributed training** — Single machine (M4 Mac, 32GB, MPS)
 - **No paper writing or publication** — The system discovers and validates, it does not write papers
-- **No validation domain** — Retrodiction scoring (comparing agent output vs post-cutoff breakthroughs) is not yet implemented
+- **No embedding-based validation** — Validation domain exists with keyword scoring; embedding scoring requires SPECTER model loaded
 - **No CI/CD pipeline** — Tests run locally via `uv run pytest`
 - **Phase 2+ not started** — Paper ingestion, hypothesis dedup, focused research direction are in planning
