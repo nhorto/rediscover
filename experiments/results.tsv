@@ -1,6 +1,12 @@
 commit	val_bpb	memory_gb	status	description
 baseline	1.763539	0.0	keep	Baseline: 11.5M params, 4 layers, 256 dim, 2 heads, MuonAdamW, DEPTH=4, BATCH=16
-reverted	N/A	0.0	crash	CRASH: This experiment replaces the standard softmax in causal self
-reverted	N/A	0.0	crash	CRASH: This experiment aims to test the stability and effectiveness
-reverted	N/A	0.0	crash	CRASH: This experiment implements Linear Log-Normal Attention in th
-reverted	N/A	0.0	crash	CRASH: This experiment refines the implementation of a linear atten
+reverted	N/A	0.0	crash	CRASH: Linear log-normal attention (pre-zone approach)
+reverted	N/A	0.0	crash	CRASH: ELU+1 linear attention (pre-zone approach)
+reverted	N/A	0.0	crash	CRASH: Linear log-normal attention v2 (pre-zone approach)
+reverted	N/A	0.0	crash	CRASH: ELU+1 linear attention v2 (pre-zone approach)
+reverted	N/A	0.0	crash	CRASH: FLuRKA low-rank + kernel attention (zone approach, optimizer error)
+7227e37	1.717026	0.0	keep	KEEP: Nystrom attention approximation (val_bpb=1.717026)
+6859227	1.677103	0.0	keep	KEEP: Performer FAVOR+ attention (val_bpb=1.677103)
+reverted	1.842817	0.0	discard	DISCARD: Nystrom variant with structured sampling (val_bpb=1.842817)
+reverted	N/A	0.0	crash	CRASH: Linear attention with GLU (optimizer IndexError on 1D params)
+reverted	2.347710	0.0	discard	DISCARD: Kernelized attention (val_bpb=2.347710)
