@@ -32,7 +32,6 @@ from prepare import MAX_SEQ_LEN, TIME_BUDGET, Tokenizer, evaluate_bpb, make_data
 # GPT Model
 # ---------------------------------------------------------------------------
 
-
 @dataclass
 class GPTConfig:
     sequence_len: int = 2048
@@ -42,6 +41,7 @@ class GPTConfig:
     n_kv_head: int = 6
     n_embd: int = 768
     window_pattern: str = "SSSL"
+    num_samples: int = 64  # New field for Nyström approximation
 
 
 def norm(x):
@@ -69,6 +69,7 @@ class CausalSelfAttention(nn.Module):
         self.n_kv_head = config.n_kv_head
         self.n_embd = config.n_embd
         self.head_dim = self.n_embd // self.n_head
+        self.num_samples = config.num_samples
         assert self.n_embd % self.n_head == 0
         assert self.n_kv_head <= self.n_head and self.n_head % self.n_kv_head == 0
         self.c_q = nn.Linear(self.n_embd, self.n_head * self.head_dim, bias=False)
@@ -103,18 +104,19 @@ class CausalSelfAttention(nn.Module):
         k = k.transpose(1, 2)
         v = v.transpose(1, 2)
 
-        window = window_size[0]
-        if window > 0 and window < T:
-            mask = torch.ones(T, T, dtype=torch.bool, device=q.device).tril()
-            mask = mask.triu(diagonal=1 - window)
-            y = F.scaled_dot_product_attention(q, k, v, attn_mask=mask)
-        else:
-            y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        # Nyström approximation
+        indices = torch.randperm(T)[:self.num_samples]
+        sampled_k = k[:, :, indices, :]
+        sampled_v = v[:, :, indices, :]
 
-        y = y.transpose(1, 2).contiguous().view(B, T, -1)
+        attention_scores_sampled = torch.matmul(q, sampled_k.transpose(-2, -1)) / math.sqrt(self.head_dim)
+        attention_scores_sampled = torch.softmax(attention_scores_sampled, dim=-1)
+
+        approx_attention_matrix = torch.matmul(attention_scores_sampled, sampled_v)
+
+        y = approx_attention_matrix.transpose(1, 2).contiguous().view(B, T, -1)
         y = self.c_proj(y)
         return y
-
 
 class MLP(nn.Module):
     def __init__(self, config):
