@@ -60,6 +60,7 @@ src/
 │   ├── council/                 Multi-agent deliberation ✅
 │   │   ├── types.py             SearchQuery, Proposal, Critique, ExperimentPlan, CouncilResult
 │   │   ├── config.py            Prompt templates (5 roles), tiered context limits
+│   │   ├── examples.py          Working code examples for implement prompt (baseline SDPA, Nyström)
 │   │   ├── helpers.py           Format helpers: extract_hyperparams, format_results_history, format_papers_summary
 │   │   ├── parsing.py           LLM response parsing: extract_field, parse_search_queries, clean_code_response
 │   │   ├── service.py           CouncilService: scan → propose → critique → refine → implement
@@ -75,6 +76,7 @@ src/
 │   ├── __init__.py              Providers interface
 │   ├── llm.py                   ✅ litellm wrapper (role→model routing, cost tracking, budget cap)
 │   ├── arxiv.py                 ✅ arXiv API client (date-filtered search, single paper lookup)
+│   ├── runner.py                ✅ RunnerProvider protocol + LocalRunner (subprocess) + ModalRunner (A10G GPU)
 │   └── git.py                   ✅ Git operations (commit, reset_last, log, diff, has_changes)
 │
 ├── utils/                       Generic utilities, zero business logic
@@ -85,7 +87,7 @@ src/
 │   └── __init__.py
 │
 └── app/                         App wiring and entry points ✅
-    ├── loop.py                  ✅ run_loop() — council + training subprocess + git + guards + logging
+    ├── loop.py                  ✅ run_loop() — council + runner + git + guards + 10-attempt fix loop + logging
     ├── guards.py                ✅ LoopGuards — max_iterations, budget_cap, stuck_detection, error_cascade
     └── __init__.py
 
@@ -129,7 +131,7 @@ Providers is the single interface through which external dependencies enter any 
 class Providers:
     llm: LLMProvider        # litellm wrapper with model routing + caching
     arxiv: ArxivProvider     # Date-filtered paper retrieval
-    runner: RunnerProvider   # Subprocess experiment execution + timing
+    runner: RunnerProvider   # LocalRunner (subprocess) or ModalRunner (cloud A10G GPU)
     git: GitProvider         # Commit, reset, log operations
 ```
 
@@ -203,7 +205,7 @@ What the system actually delivers today:
 - **Literature scanning** — Date-filtered arXiv API search + SPECTER embeddings + ChromaDB vector storage and retrieval
 - **Council pipeline** — Scan, Propose, Critique, Refine, Implement (5 LLM roles with role-based model routing)
 - **Research loop with guards** — Budget cap, stuck detection, error cascade recovery, embedding-based hypothesis similarity check
-- **178 passing unit tests** across all providers, domains, and architecture enforcement
+- **198 passing unit tests** across all providers, domains, and architecture enforcement
 - **Cost tracking** — Per-call cost estimation and cumulative budget enforcement via CostTracker
 - **Git-based experiment logging** — Each experiment is a git commit; failed experiments are reverted with `git reset`
 - **Architecture enforcement tests** — Import direction, provider isolation, circular dependency detection, file size limits, no hardcoded secrets
