@@ -35,7 +35,7 @@ from prepare import MAX_SEQ_LEN, TIME_BUDGET, Tokenizer, evaluate_bpb, make_data
 class GPTConfig:
     sequence_len: int = 2048
     vocab_size: int = 32768
-    n_layer: int = 12
+    n_layer: int = 2  # Temporarily reduce for preliminary testing
     n_head: int = 6
     n_kv_head: int = 6
     n_embd: int = 768
@@ -115,7 +115,7 @@ class CausalSelfAttention(nn.Module):
         k = k.transpose(1, 2)
         v = v.transpose(1, 2)
 
-        # Apply dynamic thresholding
+        # Apply dynamic thresholding for the first n_head to focus on syntactic relationships
         for head in range(self.n_head):
             q[:, head][q[:, head] < self.dynamic_threshold[head]] = 0
 
