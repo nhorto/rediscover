@@ -17,6 +17,8 @@ from src.domains.council.config import (
     REFINE_SYSTEM,
     SCAN_PROMPT,
     SCAN_SYSTEM,
+)
+from src.domains.council.helpers import (
     extract_hyperparams,
     format_papers_summary,
     format_results_history,
@@ -38,6 +40,13 @@ from src.domains.literature.service import LiteratureService
 from src.providers.llm import LLMProvider
 from src.types import Paper
 from src.utils.code_splicing import extract_modifiable_zone, get_frozen_context, replace_modifiable_zone
+
+
+def _log_step(log: list[dict], step: str, response) -> None:
+    """Append a standard log entry for an LLM call."""
+    log.append({"step": step, "model": response.model, "input_tokens": response.input_tokens,
+                "output_tokens": response.output_tokens, "cost": response.cost,
+                "timestamp": datetime.now().isoformat()})
 
 
 class CouncilService:
@@ -84,15 +93,7 @@ class CouncilService:
         """Generate search queries and retrieve relevant papers."""
         prompt = SCAN_PROMPT.format(program_md=program_md, max_queries=MAX_SEARCH_QUERIES)
         response = self.llm.complete(role="scan", prompt=prompt, system=SCAN_SYSTEM)
-
-        log.append({
-            "step": "scan",
-            "model": response.model,
-            "input_tokens": response.input_tokens,
-            "output_tokens": response.output_tokens,
-            "cost": response.cost,
-            "timestamp": datetime.now().isoformat(),
-        })
+        _log_step(log, "scan", response)
 
         # Parse search queries from response
         queries = parse_search_queries(response.content)
@@ -133,15 +134,7 @@ class CouncilService:
             hyperparams=extract_hyperparams(train_py),
         )
         response = self.llm.complete(role="propose", prompt=prompt, system=PROPOSE_SYSTEM)
-
-        log.append({
-            "step": "propose",
-            "model": response.model,
-            "input_tokens": response.input_tokens,
-            "output_tokens": response.output_tokens,
-            "cost": response.cost,
-            "timestamp": datetime.now().isoformat(),
-        })
+        _log_step(log, "propose", response)
 
         # Parse proposal
         hypothesis = extract_field(response.content, "HYPOTHESIS")
@@ -169,15 +162,7 @@ class CouncilService:
             results_history=format_results_history(results_tsv, max_recent=5),
         )
         response = self.llm.complete(role="critique", prompt=prompt, system=CRITIQUE_SYSTEM)
-
-        log.append({
-            "step": "critique",
-            "model": response.model,
-            "input_tokens": response.input_tokens,
-            "output_tokens": response.output_tokens,
-            "cost": response.cost,
-            "timestamp": datetime.now().isoformat(),
-        })
+        _log_step(log, "critique", response)
 
         concerns = extract_list(response.content, "CONCERNS")
         suggestions = extract_list(response.content, "SUGGESTIONS")
@@ -210,15 +195,7 @@ class CouncilService:
             hyperparams=extract_hyperparams(train_py),
         )
         response = self.llm.complete(role="refine", prompt=prompt, system=REFINE_SYSTEM)
-
-        log.append({
-            "step": "refine",
-            "model": response.model,
-            "input_tokens": response.input_tokens,
-            "output_tokens": response.output_tokens,
-            "cost": response.cost,
-            "timestamp": datetime.now().isoformat(),
-        })
+        _log_step(log, "refine", response)
 
         description = extract_field(response.content, "DESCRIPTION")
         code_changes = extract_field(response.content, "CODE_CHANGES")
@@ -259,14 +236,7 @@ class CouncilService:
             max_tokens=4096,  # Zone is ~60-100 lines, much less output needed
         )
 
-        log.append({
-            "step": "implement",
-            "model": response.model,
-            "input_tokens": response.input_tokens,
-            "output_tokens": response.output_tokens,
-            "cost": response.cost,
-            "timestamp": datetime.now().isoformat(),
-        })
+        _log_step(log, "implement", response)
 
         # Clean the response and splice back into the full file
         new_zone = clean_code_response(response.content)
@@ -278,17 +248,19 @@ class CouncilService:
         error_truncated = error_text[:2000]
         try:
             _, broken_zone, _ = extract_modifiable_zone(broken_code)
+            frozen_context = get_frozen_context(broken_code)
         except ValueError:
             broken_zone = broken_code
+            frozen_context = ""
 
-        prompt = IMPLEMENT_FIX_PROMPT.format(error_text=error_truncated, train_py=broken_zone)
+        prompt = IMPLEMENT_FIX_PROMPT.format(
+            error_text=error_truncated, train_py=broken_zone, frozen_context=frozen_context,
+        )
         response = self.llm.complete(
             role="implement", prompt=prompt, system=IMPLEMENT_FIX_SYSTEM,
             temperature=0.2, max_tokens=4096,
         )
-        log.append({"step": "implement_fix", "model": response.model,
-                     "input_tokens": response.input_tokens, "output_tokens": response.output_tokens,
-                     "cost": response.cost, "timestamp": datetime.now().isoformat()})
+        _log_step(log, "implement_fix", response)
 
         new_zone = clean_code_response(response.content)
         try:

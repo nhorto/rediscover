@@ -82,17 +82,43 @@ def validate_train_py(code: str) -> tuple[bool, str]:
 
 
 def quick_validate_code(code: str) -> tuple[bool, str]:
-    """Write code to a temp file and try to import it to catch runtime errors early.
+    """Write code to a temp file and validate model init + one forward pass.
 
-    This catches: missing imports, undefined names, basic shape issues.
-    Runs in a subprocess with a 30-second timeout.
+    This catches: missing imports, undefined names, shape mismatches.
+    Inserts an exit point after model construction and a dummy forward pass,
+    before the training loop starts. Runs in a subprocess with a 60-second timeout.
     """
     import tempfile
 
+    # Insert exit-after-init: find the training loop start and replace it
+    # with a quick forward pass test followed by sys.exit(0)
+    validation_snippet = (
+        "\n# --- QUICK VALIDATION: test model init + one forward pass ---\n"
+        "print('Quick validation: testing forward pass...')\n"
+        "try:\n"
+        "    _test_x = torch.randint(0, vocab_size, (1, 64), device=device)\n"
+        "    _test_y = torch.randint(0, vocab_size, (1, 64), device=device)\n"
+        "    with torch.no_grad():\n"
+        "        _test_loss = model(_test_x, _test_y)\n"
+        "    print(f'Quick validation PASSED: loss={_test_loss.item():.4f}')\n"
+        "    import sys; sys.exit(0)\n"
+        "except Exception as e:\n"
+        "    print(f'Quick validation FAILED: {e}', file=__import__('sys').stderr)\n"
+        "    import traceback; traceback.print_exc(file=__import__('sys').stderr)\n"
+        "    import sys; sys.exit(1)\n"
+        "# --- END QUICK VALIDATION ---\n"
+    )
+
+    # Insert the validation snippet before the training loop
+    # The training loop starts with "t_start_training = time.time()"
+    marker = "t_start_training = time.time()"
+    if marker in code:
+        test_code = code.replace(marker, validation_snippet + marker, 1)
+    else:
+        # Fallback: append sys.exit(0) at the end
+        test_code = code + "\nimport sys; sys.exit(0)\n"
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, dir=str(EXPERIMENTS_DIR)) as f:
-        # Write a modified version that exits before training
-        # Replace the training loop with a quick model instantiation test
-        test_code = code + "\n\n# Quick validation: exit before training loop\nimport sys; sys.exit(0)\n"
         f.write(test_code)
         temp_path = f.name
 
@@ -105,8 +131,8 @@ def quick_validate_code(code: str) -> tuple[bool, str]:
             cwd=str(PROJECT_ROOT),
         )
         if result.returncode != 0:
-            error = result.stderr[-1000:] if result.stderr else result.stdout[-1000:]
-            return False, f"Import/init error: {error}"
+            error = result.stderr[-1500:] if result.stderr else result.stdout[-1000:]
+            return False, f"Model init/forward error: {error}"
         return True, ""
     except subprocess.TimeoutExpired:
         return False, "Code validation timed out (>60s)"

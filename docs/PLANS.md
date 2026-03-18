@@ -7,10 +7,9 @@
 | Plan | Status | Description |
 |------|--------|-------------|
 | [phase-roadmap.md](exec-plans/active/phase-roadmap.md) | Active | Full project roadmap: Phases 1-8 |
-| [phase-2-paper-ingestion.md](exec-plans/active/phase-2-paper-ingestion.md) | Active | Paper ingestion into Chroma knowledge base |
-| [hypothesis-similarity.md](exec-plans/active/hypothesis-similarity.md) | Active | Embedding-based hypothesis dedup with retry logic |
 | [cloud-gpu-modal.md](exec-plans/active/cloud-gpu-modal.md) | Active | Modal cloud GPU integration for experiment training |
-| [fix-code-generation.md](exec-plans/active/fix-code-generation.md) | Active | Fix implement step: more context, validation, error feedback |
+| [targeted-code-generation.md](exec-plans/active/targeted-code-generation.md) | Active | Zone-based code generation to eliminate syntax errors |
+| [batch-improvements.md](exec-plans/active/batch-improvements.md) | Active | Multiple improvements from user feedback |
 
 ## Completed Plans
 
@@ -23,6 +22,9 @@
 | [step-5-council-pipeline.md](exec-plans/completed/step-5-council-pipeline.md) | 2026-03-17 | Multi-agent council: scan, propose, critique, refine, implement |
 | [step-6-git-provider.md](exec-plans/completed/step-6-git-provider.md) | 2026-03-17 | Programmatic git operations for experiment loop |
 | [step-7-research-loop.md](exec-plans/completed/step-7-research-loop.md) | 2026-03-17 | Wire the loop: council + training + git + guards |
+| [hypothesis-similarity.md](exec-plans/completed/hypothesis-similarity.md) | 2026-03-17 | Embedding-based hypothesis dedup with retry logic |
+| [fix-code-generation.md](exec-plans/completed/fix-code-generation.md) | 2026-03-17 | Fix implement step (superseded by targeted-code-generation) |
+| [phase-2-paper-ingestion.md](exec-plans/completed/phase-2-paper-ingestion.md) | 2026-03-17 | Paper ingestion into Chroma knowledge base (3,000+ papers) |
 
 ## Tech Debt
 

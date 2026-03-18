@@ -3,7 +3,7 @@
 import pytest
 
 from src.app.loop import quick_validate_code, validate_train_py
-from src.domains.council.config import extract_code_structure
+from src.domains.council.helpers import extract_code_structure
 
 
 @pytest.mark.unit

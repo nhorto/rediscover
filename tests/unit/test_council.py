@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.domains.council.config import extract_hyperparams, format_papers_summary, format_results_history
+from src.domains.council.helpers import extract_hyperparams, format_papers_summary, format_results_history
 from src.domains.council.parsing import clean_code_response, extract_field, extract_list, parse_search_queries
 from src.domains.council.service import CouncilService
 from src.domains.council.types import CouncilResult, Critique, ExperimentPlan, Proposal, SearchQuery
