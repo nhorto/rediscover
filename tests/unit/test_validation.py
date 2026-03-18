@@ -45,6 +45,12 @@ class TestValidateTrainPy:
         is_safe, reason = validate_train_py(code)
         assert is_safe is False
 
+    def test_model_eval_allowed(self):
+        """model.eval() is standard PyTorch — should NOT be blocked."""
+        code = "model.eval()\n"
+        is_safe, reason = validate_train_py(code)
+        assert is_safe is True
+
     def test_shutil_rejected(self):
         code = "import shutil\nshutil.rmtree('/tmp')\n"
         is_safe, reason = validate_train_py(code)

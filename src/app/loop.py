@@ -38,8 +38,8 @@ DANGEROUS_PATTERNS = [
     r'subprocess\.',  # subprocess calls
     r'shutil\.',  # file operations
     r'__import__',  # dynamic imports
-    r'exec\s*\(',  # dynamic code execution
-    r'eval\s*\(',  # dynamic evaluation
+    r'(?<!\w)exec\s*\(',  # dynamic code execution (not .exec_something)
+    r'(?<!\.)eval\s*\(',  # dynamic evaluation (not model.eval())
 ]
 
 
