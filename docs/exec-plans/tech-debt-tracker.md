@@ -6,3 +6,4 @@
 |------|----------|--------|-------------|--------|
 | Git state collision | Medium | app/loop | Running the loop while making development commits causes git commit failures. The loop should run on a separate branch or use worktrees. | 2026-03-17 |
 | MuonAdamW shape error | Medium | experiments | Optimizer crashes with IndexError on 1D parameters when the attention code adds parameters with <2 dimensions. Need to ensure new params go in the right optimizer group. | 2026-03-17 |
+| OpenRouter credit limit | High | providers/llm | OpenRouter API key has insufficient credits for Phase 4 run (402 error: can only afford 2463 tokens, needs 4096). Need to add credits at https://openrouter.ai/settings/keys or switch to a different provider. Blocks running 100+ experiments. | 2026-03-18 |

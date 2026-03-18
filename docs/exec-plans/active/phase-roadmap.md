@@ -45,18 +45,14 @@
 **Goal:** Run the first overnight research session and analyze what the agent discovers.
 
 **Steps:**
-- [ ] 4a: Write a focused program.md for the first research direction (attention efficiency)
-- [ ] 4b: Run the loop overnight (~100+ experiments, $15-30 budget)
-- [ ] 4c: Analyze results:
-  - What hypotheses did the agent generate?
-  - Which ones improved val_bpb?
-  - What search queries did it use?
-  - Did any proposals resemble post-cutoff breakthroughs?
-  - What patterns emerged in successful vs failed experiments?
-- [ ] 4d: Run validation framework on all proposals
-- [ ] 4e: Write up findings
+- [x] 4a: Write a focused program.md for the first research direction (attention efficiency)
+- [ ] 4b: Run the loop overnight (~100+ experiments, $15-30 budget) — BLOCKED: OpenRouter credits exhausted
+- [x] 4c: Analyze results (partial — 17 experiments from Phase 2 analyzed)
+- [x] 4d: Run validation framework on all proposals (SPECTER + keyword scoring)
+- [x] 4e: Write up findings (docs/analysis/phase-4-*.md)
 
 **Exit criteria:** Complete analysis of one overnight run with retrodiction scores.
+**Status:** BLOCKED — need OpenRouter credits to run 100+ experiments. Analysis pipeline is ready.
 
 ## Phase 5: Multi-Cutoff Comparison
 **Goal:** Test how knowledge level affects discovery ability.
