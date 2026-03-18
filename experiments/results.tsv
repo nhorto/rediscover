@@ -16,3 +16,6 @@ reverted	N/A	0.0	crash	CRASH: This experiment modifies the CausalSelfAttention c
 41123cf	1.675352	0.0	keep	KEEP: Implement the Performer FAVOR+ mechanism in the `CausalSelfA (val_bpb=1.675352)
 reverted	1.676400	0.0	discard	DISCARD: Implement a prototype of Reformer-style LSH attention in the (val_bpb=1.676400)
 reverted	1.680573	0.0	discard	DISCARD: This experiment modifies the `CausalSelfAttention` class to  (val_bpb=1.680573)
+reverted	N/A	0.0	crash	CRASH: This experiment introduces a hierarchical attention mechanis
+reverted	N/A	0.0	crash	CRASH: This experiment modifies the attention mechanism to use a dy
+reverted	N/A	0.0	crash	CRASH: This experiment integrates a hybrid attention mechanism comb

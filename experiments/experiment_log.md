@@ -218,3 +218,66 @@ EXPECTED IMPACT:
 **Cost this cycle:** $0.0851
 **Cumulative cost:** $2.3471
 ---
+
+## Experiment 2 — 2026-03-18 03:53:07
+**Hypothesis:** Introducing a hierarchical attention mechanism where global and local attention patterns are combined could improve the model's ability to focus on relevant information at different scales, leading to better context understanding and lower validation bits-per-byte (val_bpb).
+**Approach:** 1. **Hierarchical Attention Mechanism**: Modify the `CausalSelfAttention` class to include two levels of attention:
+   - **Global Attention**: A small number of attention heads that compute attention scores over the entire sequence. This can be implemented using a low-rank approximation to reduce computational complexity.
+   - **Local Attention**: The remaining attention heads focus on a sliding window pattern to capture local dependencies with high precision.
+2. **Combining Attention Scores**: Combine the attention scores from the global and local attention heads using a learned gating mechanism. This gating mechanism will allow the model to dynamically adjust the importance of global vs. local attention based on the context.
+3. **Implementation Details**:
+   - Split the attention heads into two groups: `n_global_heads` for global attention and `n_local_heads` for local attention.
+   - For global attention, use an efficient low-rank approximation method such as Nystrom or Performer FAVOR+.
+   - For local attention, maintain the sliding window pattern.
+   - Introduce a gating mechanism that learns to weight the contributions of global and local attention scores.
+   - Integrate these changes into the attention computation pipeline in the `CausalSelfAttention` class.
+**Papers consulted:** Reproduction Report on "Learn to Pay Attention", ExGate: Externally Controlled Gating for Feature-based Atten, NeuroX: A Toolkit for Analyzing Individual Neurons in Neural
+**Critique:** The proposal is theoretically sound and has the potential to improve the model's ability to capture context at different scales. However, the small scale of the model and the history of crashes in sim
+**Plan:** This experiment introduces a hierarchical attention mechanism by first implementing and testing global and local attention mechanisms independently within the `CausalSelfAttention` class.
+**Result:** val_bpb=CRASH (crash)
+**Cost this cycle:** $0.1157
+**Cumulative cost:** $0.2795
+---
+
+## Experiment 1 — 2026-03-18 05:34:13
+**Hypothesis:** The fixed sliding window pattern in the attention mechanism may not be optimal for all tokens, as it assumes a uniform locality in the sequence. Introducing a dynamic, content-dependent window pattern could better capture long-range dependencies and improve the efficiency of the attention mechanism, potentially lowering the validation bits-per-byte (val_bpb).
+**Approach:** 1. **Dynamic Sliding Window Pattern:** Modify the attention mechanism to use a dynamically adjusted sliding window size based on the content of the sequence. This can be achieved by computing a relevance score for each token in the sequence, determining the appropriate window size for each token based on its score.
+   - **Relevance Score Calculation:** For each token, compute a relevance score using a simple MLP or a small attention mechanism that considers the context of neighboring tokens.
+   - **Adaptive Window Size:** Use the relevance scores to adjust the window size, allowing more relevant tokens to have a larger window and less relevant tokens to have a smaller window.
+2. **Implementation Details:**
+   - Add a small MLP or a single-head attention layer to compute relevance scores for each token.
+   - Use the relevance scores to dynamically adjust the window size for each token.
+   - Ensure that the dynamic windows are implemented efficiently to maintain the overall computational complexity close to O(N) or O(N log N).
+**Papers consulted:** Reproduction Report on "Learn to Pay Attention", A Neural ODE Interpretation of Transformer Layers, Gated recurrent neural networks discover attention
+**Critique:** The proposal presents an interesting hypothesis that a dynamic, content-dependent sliding window pattern could improve the efficiency and effectiveness of the attention mechanism. However, the added c
+**Plan:** This experiment modifies the attention mechanism to use a dynamically adjusted sliding window size based on simpler heuristics for relevance scores to reduce computational complexity, ensuring feasibility within the constraints of a small-scale model.
+**Result:** val_bpb=CRASH (crash)
+**Cost this cycle:** $0.1421
+**Cumulative cost:** $0.1421
+---
+
+## Experiment 2 — 2026-03-18 05:35:02
+**Hypothesis:** The current attention mechanism may benefit from a hybrid approach that combines content-based attention with a learned positional bias. This could enhance the model's ability to capture both local and global dependencies more effectively, potentially lowering val_bpb.
+**Approach:** 1. **Hybrid Attention Mechanism**:
+   - **Content-Based Attention**: Retain the standard scaled dot-product attention mechanism for capturing content-based dependencies.
+   - **Learned Positional Bias**: Introduce a learned positional bias that is added to the attention scores. This bias will be specific to each head and will be learned during training.
+   
+2. **Implementation Details**:
+   - **Attention Scores Calculation**: Modify the attention score calculation to include a positional bias term. The new attention scores \(A\) for head \(h\) will be computed as:
+     \[
+     A_{ij}^h = \frac{Q_i^h \cdot (K_j^h)^T}{\sqrt{d_k}} + P_{ij}^h
+     \]
+     where \(Q\) and \(K\) are the query and key matrices, \(d_k\) is the dimension of the key, and \(P_{ij}^h\) is the learned positional bias for head \(h\).
+   - **Learned Positional Bias Initialization**: Initialize \(P_{ij}^h\) as a small random matrix and let it be learned during training. Each head will have its own positional bias matrix.
+   - **Integration into Existing Code**: Modify the `CausalSelfAttention` class to include the learned positional bias in the attention score computation. Update the forward pass to use this new attention mechanism.
+
+3. **Novelty**:
+   - This approach combines ideas from content-based attention and learned positional encoding in a novel way.
+   - Unlike existing methods that use fixed positional encodings (e.g., RoPE) or rely solely on content-based attention, this method introduces a learned component that can adapt to the specific needs of each head during training.
+**Papers consulted:** Gated recurrent neural networks discover attention, Attention Visualizer Package: Revealing Word Importance for , Reproduction Report on "Learn to Pay Attention"
+**Critique:** The proposal presents a novel hybrid attention mechanism that integrates content-based attention with learned positional biases, which is original and theoretically promising. However, the implementat
+**Plan:** This experiment integrates a hybrid attention mechanism combining content-based attention with learned positional biases, incorporating initialization and regularization strategies to prevent overfitting.
+**Result:** val_bpb=CRASH (crash)
+**Cost this cycle:** $0.1375
+**Cumulative cost:** $0.2796
+---
