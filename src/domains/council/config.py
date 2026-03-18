@@ -1,5 +1,7 @@
 """Configuration and prompt templates for the council domain."""
 
+from src.domains.council.examples import BASELINE_SDPA_EXAMPLE, EXAMPLES_PATTERNS_NOTE, NYSTROM_EXAMPLE
+
 # How many recent raw results to show (alongside summaries of older experiments)
 MAX_RECENT_RESULTS = 10
 
@@ -130,12 +132,23 @@ Your output must contain:
 
 You may add new helper functions, new nn.Module classes, or new GPTConfig fields.
 You may NOT add new imports (the frozen code already has: torch, torch.nn, torch.nn.functional as F, math).
+
+CRITICAL RULES TO AVOID CRASHES:
+- All nn.Parameter must be 2D+ (MuonAdamW crashes on 1D params). Use shape (1, n) not (n,).
+- Never use bias=True on nn.Linear (MuonAdamW crashes). Always bias=False.
+- norm() helper must exist (used by frozen code).
+- forward() signature must be: forward(self, x, ve, cos_sin, window_size)
+- forward() must return tensor of shape [B, T, C] where C = config.n_embd.
+- c_proj must project back to n_embd dimension.
+
 Return ONLY the Python code, no markdown fences, no explanation."""
 
 IMPLEMENT_PROMPT = """## Implementation Plan
 {plan_text}
 
 {frozen_context}
+
+{examples}
 
 ## TENSOR SHAPE REFERENCE (verify your code matches these)
 With the current config (n_head=2, n_kv_head=2, n_embd=256, head_dim=128, sequence_len=2048):
@@ -166,9 +179,19 @@ Double-check all tensor shapes before returning."""
 
 IMPLEMENT_FIX_SYSTEM = """You are an expert PyTorch programmer fixing a broken attention mechanism.
 The previous code had an error. Fix ONLY the error — do not change the approach, just fix the bug.
-Return ONLY the fixed modifiable zone code (GPTConfig + helpers + CausalSelfAttention)."""
+
+COMMON MISTAKES AND FIXES:
+- Shape mismatch in view/reshape: count the dimensions. q after c_q is [B, T, n_head*head_dim], view as [B, T, n_head, head_dim].
+- 1D nn.Parameter: MuonAdamW crashes. Use shape (1, n) not (n,). Or use register_buffer for non-learned values.
+- bias=True on nn.Linear: MuonAdamW crashes. Always use bias=False.
+- Missing .contiguous() before .view(): needed after transpose.
+- Output shape wrong: forward() must return [B, T, C] where C = n_embd.
+
+Return ONLY the fixed modifiable zone code (GPTConfig + helpers + CausalSelfAttention).
+No markdown fences, no explanation."""
 
 IMPLEMENT_FIX_PROMPT = """## Error from Previous Attempt
+The code crashed with this error. Read it carefully and fix the SPECIFIC issue.
 ```
 {error_text}
 ```

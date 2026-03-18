@@ -223,17 +223,21 @@ class CouncilService:
         _, zone_code, _ = extract_modifiable_zone(train_py)
         frozen_context = get_frozen_context(train_py)
 
+        from src.domains.council.examples import BASELINE_SDPA_EXAMPLE, EXAMPLES_PATTERNS_NOTE, NYSTROM_EXAMPLE
+
+        examples = f"{BASELINE_SDPA_EXAMPLE}\n\n{NYSTROM_EXAMPLE}\n\n{EXAMPLES_PATTERNS_NOTE}"
         prompt = IMPLEMENT_PROMPT.format(
             plan_text=plan_text,
             frozen_context=frozen_context,
             zone_code=zone_code,
+            examples=examples,
         )
         response = self.llm.complete(
             role="implement",
             prompt=prompt,
             system=IMPLEMENT_SYSTEM,
             temperature=0.3,
-            max_tokens=2048,  # Zone is ~60-100 lines, much less output needed
+            max_tokens=4096,  # Zone is ~60-100 lines but allow room for new helpers
         )
 
         _log_step(log, "implement", response)

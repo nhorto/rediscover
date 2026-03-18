@@ -7,7 +7,6 @@
 | Plan | Status | Description |
 |------|--------|-------------|
 | [phase-roadmap.md](exec-plans/active/phase-roadmap.md) | Active | Full project roadmap: Phases 1-8 |
-| [cloud-gpu-modal.md](exec-plans/active/cloud-gpu-modal.md) | Active | Modal cloud GPU integration for experiment training |
 | [batch-improvements.md](exec-plans/active/batch-improvements.md) | Active | Multiple improvements from user feedback |
 
 ## Completed Plans
@@ -25,6 +24,8 @@
 | [fix-code-generation.md](exec-plans/completed/fix-code-generation.md) | 2026-03-17 | Fix implement step (superseded by targeted-code-generation) |
 | [phase-2-paper-ingestion.md](exec-plans/completed/phase-2-paper-ingestion.md) | 2026-03-17 | Paper ingestion into Chroma knowledge base (3,000+ papers) |
 | [targeted-code-generation.md](exec-plans/completed/targeted-code-generation.md) | 2026-03-17 | Zone-based code generation — 66% success rate, 5% val_bpb improvement |
+| [cloud-gpu-modal.md](exec-plans/completed/cloud-gpu-modal.md) | 2026-03-18 | Modal cloud GPU integration (A10G) for experiment training |
+| [improve-code-generation-reliability.md](exec-plans/completed/improve-code-generation-reliability.md) | 2026-03-18 | Working examples + 10-attempt fix loop to reduce ~70% crash rate |
 
 ## Tech Debt
 

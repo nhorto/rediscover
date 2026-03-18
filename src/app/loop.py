@@ -454,9 +454,9 @@ def run_loop(
         print(f"  Plan: {result.plan.description[:100]}")
         print(f"  Council cost: ${cost_this_cycle:.4f}")
 
-        # Validate and run with error feedback (max 3 fix attempts)
+        # Validate and run with error feedback (max 10 fix attempts)
         current_code = result.new_train_py
-        max_fix_attempts = 3
+        max_fix_attempts = 10
         val_bpb = None
         training_output = ""
         code_accepted = False
@@ -545,51 +545,67 @@ def run_loop(
         training_time = time.time() - t0
         print(f"  Training completed in {training_time:.0f}s")
 
-        # If training crashed, try error feedback
-        if val_bpb is None and max_fix_attempts > 0:
-            # Save failing code for debugging
+        # If training crashed, try error feedback (up to 3 attempts)
+        max_training_fixes = 3
+        if val_bpb is None and max_training_fixes > 0:
             debug_path = EXPERIMENTS_DIR / f"debug_crash_{iteration}.py"
             debug_path.write_text(current_code)
-            print("  Training CRASHED — attempting fix...")
             print(f"  Failing code saved to: {debug_path}")
-            print(f"  STDERR: {training_output[-800:]}")
             git.reset_last(preserve_files=PRESERVE_ON_RESET)
 
-            # Try to fix the code based on the training error
-            fixed_code, fix_ok = safe_fix_code(council, current_code, training_output[:2000], result.log)
-            cost_this_cycle = cost_tracker.total_cost - cost_before
-            if not fix_ok:
-                print("  Fix API call failed — giving up on this experiment")
-                fixed_code = current_code  # ensure we don't train broken code
+            for training_fix in range(max_training_fixes):
+                print(f"  Training CRASHED — fix attempt {training_fix + 1}/{max_training_fixes}")
+                print(f"  Error: {training_output[-500:]}")
 
-            # Validate the fix
-            is_safe_fix, _ = validate_train_py(fixed_code)
-            is_valid_fix, _ = quick_validate_code(fixed_code) if is_safe_fix else (False, "")
+                fixed_code, fix_ok = safe_fix_code(council, current_code, training_output[:2000], result.log)
+                cost_this_cycle = cost_tracker.total_cost - cost_before
+                if not fix_ok:
+                    print("  Fix API call failed — trying next attempt" if training_fix < max_training_fixes - 1 else "  Fix API call failed — giving up")
+                    continue
 
-            if is_safe_fix and is_valid_fix:
-                print("  Fix passed validation — retraining...")
+                # Validate the fix
+                is_safe_fix, _ = validate_train_py(fixed_code)
+                is_valid_fix, _ = quick_validate_code(fixed_code) if is_safe_fix else (False, "")
+
+                if not (is_safe_fix and is_valid_fix):
+                    print(f"  Fix failed validation — trying next attempt" if training_fix < max_training_fixes - 1 else "  Fix failed validation — giving up")
+                    current_code = fixed_code  # pass the broken code to next fix attempt
+                    training_output = f"Validation failed: safe={is_safe_fix}, valid={is_valid_fix}"
+                    continue
+
+                # Fix passed validation — retrain
+                print(f"  Fix {training_fix + 1} passed validation — retraining...")
                 TRAIN_PY.write_text(fixed_code)
                 try:
                     commit_hash = git.commit(
-                        f"Experiment {iteration} (fixed): {result.plan.description[:70]}",
+                        f"Experiment {iteration} (fix {training_fix + 1}): {result.plan.description[:65]}",
                         files=[str(TRAIN_PY)],
                     )
                 except Exception:
                     TRAIN_PY.write_text(train_py)
                     guards.record_result(None, "crash", "Git error on fix")
-                    continue
+                    break
 
                 protect_files()
                 t0 = time.time()
                 try:
-                    val_bpb, training_output = run_training()
+                    prepare_code = read_file(PREPARE_PY)
+                    train_code_fixed = read_file(TRAIN_PY)
+                    training_result = runner.run(train_code_fixed, prepare_code)
+                    val_bpb = training_result.val_bpb
+                    training_output = training_result.output
                 finally:
                     unprotect_files()
                 training_time = time.time() - t0
                 print(f"  Fixed training completed in {training_time:.0f}s")
                 current_code = fixed_code
-            else:
-                print("  Fix failed validation — giving up on this experiment")
+
+                if val_bpb is not None:
+                    print(f"  Fix succeeded! val_bpb={val_bpb:.6f}")
+                    break  # Training worked — exit fix loop
+                else:
+                    # Training crashed again — reset and try another fix
+                    git.reset_last(preserve_files=PRESERVE_ON_RESET)
 
         # Evaluate
         if val_bpb is None:
