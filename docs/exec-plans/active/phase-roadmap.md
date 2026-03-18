@@ -22,8 +22,8 @@
 
 **Steps:**
 - [x] 2a: Ingest papers into knowledge base (3,000+ papers)
-- [ ] 2b: Run 3-5 experiments with $2-3 budget cap to test end-to-end
-- [ ] 2c: Fix whatever breaks (prompt issues, parsing failures, timeout handling)
+- [x] 2b: Run 3-5 experiments with $2-3 budget cap to test end-to-end
+- [x] 2c: Fix whatever breaks (prompt issues, parsing failures, timeout handling)
 - [ ] 2d: Confirm the loop runs for 10+ experiments without human intervention
 - [ ] 2e: Review experiment_log.md — are proposals coherent? Is the council reasoning well?
 
