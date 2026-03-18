@@ -39,9 +39,27 @@ class GitProvider:
         self._run("commit", "-m", message)
         return self.current_hash()
 
-    def reset_last(self) -> None:
-        """Revert the last commit (hard reset to HEAD~1)."""
+    def reset_last(self, preserve_files: list[str] | None = None) -> None:
+        """Revert the last commit, preserving specified files.
+
+        Uses git reset --hard HEAD~1 to revert train.py changes,
+        but saves and restores any files that should not be affected
+        (e.g., results.tsv, experiment_log.md).
+        """
+        # Save contents of files to preserve
+        saved: dict[str, str] = {}
+        if preserve_files:
+            for f in preserve_files:
+                path = Path(self.repo_path) / f
+                if path.exists():
+                    saved[f] = path.read_text()
+
         self._run("reset", "--hard", "HEAD~1")
+
+        # Restore preserved files
+        for f, content in saved.items():
+            path = Path(self.repo_path) / f
+            path.write_text(content)
 
     def current_hash(self) -> str:
         """Return the short hash of HEAD."""

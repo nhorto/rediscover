@@ -28,6 +28,9 @@ EXPERIMENT_LOG = EXPERIMENTS_DIR / "experiment_log.md"
 # Files that should be read-only during training (prevent agent cheating)
 PROTECTED_FILES = [PREPARE_PY, RESULTS_TSV, PROGRAM_MD, EXPERIMENT_LOG]
 
+# Files to preserve during git reset (don't lose results when reverting experiments)
+PRESERVE_ON_RESET = [str(RESULTS_TSV), str(EXPERIMENT_LOG)]
+
 # Training timeout: TIME_BUDGET (300s) + 600s for startup/eval overhead
 TRAINING_TIMEOUT = 900
 
@@ -483,7 +486,7 @@ def run_loop(
             print("  Training CRASHED — attempting fix...")
             print(f"  Failing code saved to: {debug_path}")
             print(f"  STDERR: {training_output[-800:]}")
-            git.reset_last()
+            git.reset_last(preserve_files=PRESERVE_ON_RESET)
 
             # Try to fix the code based on the training error
             fixed_code, _ = council.fix_code(current_code, training_output[:2000], result.log)
@@ -523,7 +526,7 @@ def run_loop(
             status = "crash"
             print("  CRASH — reverting")
             print(f"  Output: {training_output[:200]}")
-            git.reset_last()
+            git.reset_last(preserve_files=PRESERVE_ON_RESET)
             description = f"CRASH: {result.plan.description[:60]}"
         elif val_bpb < guards.best_val_bpb:
             status = "keep"
@@ -532,7 +535,7 @@ def run_loop(
         else:
             status = "discard"
             print(f"  DISCARD — val_bpb={val_bpb:.6f} (best={guards.best_val_bpb:.6f})")
-            git.reset_last()
+            git.reset_last(preserve_files=PRESERVE_ON_RESET)
             description = f"DISCARD: {result.plan.description[:60]} (val_bpb={val_bpb:.6f})"
 
         # Log

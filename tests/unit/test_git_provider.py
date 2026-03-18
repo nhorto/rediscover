@@ -61,6 +61,30 @@ class TestGitProvider:
         assert git.current_hash() == initial_hash
         assert not (tmp_path / "temp.txt").exists()
 
+    def test_reset_last_preserves_files(self, git_repo):
+        git, tmp_path = git_repo
+
+        # Create files (simulate initial repo state)
+        results = tmp_path / "results.tsv"
+        results.write_text("header\nrow1\n")
+        train = tmp_path / "train.py"
+        train.write_text("original code")
+        git.commit("Add results and train", files=["results.tsv", "train.py"])
+
+        # Make a new commit (simulate experiment — modifies train.py)
+        train.write_text("modified code")
+        git.commit("Experiment", files=["train.py"])
+
+        # Append to results (this happens outside git, after commit)
+        results.write_text("header\nrow1\nrow2\n")
+
+        # Reset last commit but preserve results
+        git.reset_last(preserve_files=["results.tsv"])
+
+        # train.py should be reverted, but results.tsv should keep the appended data
+        assert train.read_text() == "original code"
+        assert results.read_text() == "header\nrow1\nrow2\n"
+
     def test_diff_empty(self, git_repo):
         git, _ = git_repo
         assert git.diff() == ""
