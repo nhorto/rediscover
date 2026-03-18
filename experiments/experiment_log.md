@@ -363,3 +363,66 @@ Additionally, we can experiment with applying this thresholding mechanism select
 **Cost this cycle:** $0.0430
 **Cumulative cost:** $0.2997
 ---
+
+## Experiment 1 — 2026-03-18 17:42:05
+**Hypothesis:** I believe that introducing a hierarchical attention mechanism that differentiates between local and global contexts can improve the efficiency of information extraction in the attention mechanism. The core insight is that different tokens in a sequence might require varying levels of attention granularity. For instance, tokens that are closely related (local context) can be attended to with a more refined, detailed attention, while tokens that are farther apart (global context) can be attended to in a more coarse manner. This can reduce the effective number of computations needed for attention without sacrificing the model's ability to capture relevant contextual relationships.
+**Approach:** To implement this, I propose the following changes to the `CausalSelfAttention` class:
+1. **Hierarchical Attention Layers**: Introduce two layers of attention mechanisms: one for local attention and another for global attention. The local attention can use a sliding window approach to focus on a limited range of tokens, while the global attention can operate on a reduced set of tokens (e.g., every k-th token) to capture broader contextual information.
+2. **Dynamic Attention Scaling**: Implement a mechanism that dynamically determines the ratio of local to global attention based on token importance, which can be learned during training. For instance, tokens that are semantically rich or critical (based on their embeddings) can receive more detailed local attention, while less critical tokens can be processed with global attention.
+3. **Attention Weight Sharing**: Utilize weight sharing across the local and global attention heads to reduce the number of parameters while allowing for a richer representation of the token interactions.
+
+This approach diverges from existing methods that typically treat all tokens uniformly and do not adaptively scale the attention granularity based on the context or importance of the tokens.
+**Papers consulted:** Faster Causal Attention Over Large Sequences Through Sparse , The Curse of Dense Low-Dimensional Information Retrieval for, One Pass Streaming Algorithm for Super Long Token Attention 
+**Critique:** The proposal presents a novel approach to attention mechanisms by introducing hierarchical layers and dynamic scaling, which could lead to improvements in efficiency. However, there are concerns regar
+**Plan:** This experiment introduces a hierarchical attention mechanism with a focus on local and global contexts to improve the efficiency of information extraction while ensuring the model retains important contextual relationships.
+**Result:** val_bpb=CRASH (crash)
+**Cost this cycle:** $0.0368
+**Cumulative cost:** $0.0368
+---
+
+## Experiment 3 — 2026-03-18 17:45:18
+**Hypothesis:** The standard softmax normalization in attention mechanisms assumes that all tokens must be compared in a relative manner, leading to potential inefficiencies and redundancy in attention distribution. By introducing a "contextual gating" mechanism that selectively normalizes attention weights based on local context, we can enhance the efficiency of the attention mechanism. This mechanism will allow for a more focused attention distribution that could ignore less relevant tokens, thereby improving information extraction and potentially lowering validation bits-per-byte (val_bpb).
+**Approach:** We will implement a contextual gating mechanism that modifies the attention weights before the softmax operation. The gating will be based on a learned context vector, which will be computed for each query. This context vector will determine the level of attention that different tokens receive based on their relevance to the current query. Specifically, for each attention head, we will:
+
+1. Compute a context vector for each query by aggregating features from the keys using a small feedforward network (similar to a lightweight MLP).
+2. Multiply the raw attention scores (before the softmax) by the corresponding context vector, thus allowing for a dynamic adjustment of attention weights based on local context.
+3. Apply softmax normalization to the adjusted scores to ensure they remain valid probability distributions.
+
+This approach diverges from existing methods that utilize fixed normalization techniques, such as regular softmax or temperature scaling. Instead, it introduces a mechanism that learns to adaptively focus attention on the most relevant parts of the input sequence, thereby reducing redundancy in the attention distribution.
+**Papers consulted:** Entropy- and Distance-Based Predictors From GPT-2 Attention , Reproduction Report on "Learn to Pay Attention", Which Transformer to Favor: A Comparative Analysis of Effici
+**Critique:** The proposal presents a theoretically interesting approach to enhancing attention mechanisms through contextual gating. However, its originality is questionable, given the existence of similar techniq
+**Plan:** This experiment implements a simplified contextual gating mechanism, initially using a heuristic-based approach to control attention weights before softmax, allowing for empirical validation of the mechanism's effectiveness without overcomplicating the architecture.
+**Result:** val_bpb=CRASH (crash)
+**Cost this cycle:** $0.0647
+**Cumulative cost:** $0.1717
+---
+
+## Experiment 4 — 2026-03-18 17:47:39
+**Hypothesis:** The process of attention in transformers assumes a uniform treatment of all tokens through the same query-key-value interactions, leading to potential inefficiencies in the representation of different token types (e.g., informative vs. less informative tokens). By introducing a mechanism that allows for adaptive attention based on token importance derived from the context, we can allocate attention more effectively. This context-sensitive approach to querying can enhance the model's ability to focus on critical information while maintaining a compact representation, potentially lowering validation bits-per-byte (val_bpb).
+**Approach:** I propose to implement a dual-layer attention mechanism where the first layer computes a context-sensitive importance score for each token based on its relationship with preceding tokens. This score will serve as a dynamic gating mechanism for the second layer of attention, which processes the queries, keys, and values. Specifically, I will:
+
+1. **Compute Contextual Importance Scores**: Introduce a simple feedforward neural network that takes the output embeddings of the previous layer and generates a scalar importance score for each token. This network could utilize a lightweight architecture (e.g., a single linear layer with a non-linearity) to keep computational overhead low.
+
+2. **Gate Attention Weights**: Use these importance scores as multiplicative gates that modulate the attention weights in the standard multi-head attention mechanism. This means that for tokens with low importance scores, their contributions to the attention matrix will be diminished, effectively reducing the noise from less relevant tokens.
+
+3. **Layer-wise Adaptation**: Allow the importance scoring mechanism to adapt across different layers of the transformer. This could be achieved by tying the weights of the importance scoring network across layers, but with different biases to allow for flexibility in each layer's focus.
+**Papers consulted:** Entropy- and Distance-Based Predictors From GPT-2 Attention , Reproduction Report on "Learn to Pay Attention", Gated recurrent neural networks discover attention
+**Critique:** The proposal presents an interesting direction by attempting to enhance attention mechanisms in transformers through a dual-layer approach. However, it risks being less original if it closely mirrors 
+**Plan:** This experiment refines the dual-layer attention mechanism by introducing a simpler, heuristic-based method for determining token importance, while also ensuring computational efficiency to preserve the model's performance and stability during training.
+**Result:** val_bpb=CRASH (crash)
+**Cost this cycle:** $0.1066
+**Cumulative cost:** $0.2783
+---
+
+## Experiment 7 — 2026-03-18 17:52:30
+**Hypothesis:** The current multi-head attention mechanism, which applies the same positional encoding across all heads, may not effectively capture the diverse dependencies inherent in different types of contextual relationships among tokens. By introducing head-specific positional encodings that differ in their mathematical representation, we can better tune the attention mechanism to the particularities of each head's focus, potentially leading to improved attention efficiency and reduced redundancy. This insight stems from the realization that attention heads often specialize in capturing different aspects of the input, and thus, they would benefit from tailored positional information.
+**Approach:** I propose to implement a mechanism where each attention head uses a unique, learnable positional encoding that is mathematically distinct from the others. Instead of the current RoPE positional encoding applied uniformly across heads, we can introduce a set of separate learned embeddings for each head that encode position in a tailored way (e.g., sinusoidal patterns that are shifted or scaled differently for each head). This allows each head to have its own notion of positional information, potentially enhancing its ability to capture specific dependencies within the input sequence.
+
+This approach is novel compared to existing methods because it not only retains the concept of positional encoding but also adaptively modifies it for each attention head, allowing for a richer representation of token relationships. This contrasts with prior work which typically applies a uniform positional encoding to all heads (e.g., RoPE) without taking into account the specialized roles that different heads might play.
+**Papers consulted:** Linear Log-Normal Attention with Unbiased Concentration, Attention Visualizer Package: Revealing Word Importance for , Reproduction Report on "Learn to Pay Attention"
+**Critique:** The proposal presents an interesting idea to enhance multi-head attention by introducing head-specific positional encodings; however, it lacks a strong theoretical foundation and empirical support for
+**Plan:** This experiment introduces head-specific positional encodings in the multi-head attention mechanism, allowing each head to learn distinct positional information and evaluates its impact through a controlled ablation study.
+**Result:** val_bpb=CRASH (crash)
+**Cost this cycle:** $0.0545
+**Cumulative cost:** $0.4976
+---

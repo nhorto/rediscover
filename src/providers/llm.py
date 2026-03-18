@@ -14,17 +14,14 @@ class APITimeoutError(Exception):
 # Suppress litellm's verbose logging
 litellm.suppress_debug_info = True
 
-# Role → model mapping: October 2023 cutoff council
-# All models have confirmed training data cutoff before Jan 1, 2024.
-# See docs/design-docs/model-selection-strategy.md for rationale.
-# NOTE: o1 has compatibility issues with litellm (returns None content).
-# Using gpt-4o-2024-05-13 for all roles until o1 support is fixed.
+# Role → model mapping (direct OpenAI API)
+# All models have Oct 2023 knowledge cutoff — valid for retrodiction.
 DEFAULT_MODEL_MAP: dict[str, str] = {
-    "scan": "openrouter/openai/gpt-4o-mini",          # Oct 2023 cutoff, faster
-    "propose": "openrouter/openai/gpt-4o-mini",        # Oct 2023 cutoff, faster
-    "critique": "openrouter/openai/gpt-4o-mini",       # Oct 2023 cutoff, faster
-    "refine": "openrouter/openai/gpt-4o-mini",         # Oct 2023 cutoff, faster
-    "implement": "openrouter/openai/gpt-4o-mini",      # Oct 2023 cutoff, faster
+    "scan": "gpt-4o-mini",              # Oct 2023 cutoff, cheap, fast
+    "propose": "gpt-4o-mini",            # Oct 2023 cutoff, cheap, fast
+    "critique": "gpt-4o-mini",           # Oct 2023 cutoff, cheap, fast
+    "refine": "gpt-4o-mini",             # Oct 2023 cutoff, cheap, fast
+    "implement": "gpt-4o-2024-11-20",    # Oct 2023 cutoff, best code quality
 }
 
 

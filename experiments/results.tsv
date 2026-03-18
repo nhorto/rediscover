@@ -25,3 +25,7 @@ reverted	N/A	0.0	crash	CRASH: This experiment implements a phased approach to in
 reverted	1.913020	0.0	discard	DISCARD: This experiment implements a simplified version of the propo (val_bpb=1.913020)
 reverted	N/A	0.0	crash	CRASH: This experiment tests the effectiveness of fixed attention s
 reverted	N/A	0.0	crash	CRASH: This experiment conducts preliminary analysis to evaluate th
+reverted	N/A	0.0	crash	CRASH: This experiment introduces a hierarchical attention mechanis
+reverted	N/A	0.0	crash	CRASH: This experiment implements a simplified contextual gating me
+reverted	N/A	0.0	crash	CRASH: This experiment refines the dual-layer attention mechanism b
+reverted	N/A	0.0	crash	CRASH: This experiment introduces head-specific positional encoding
