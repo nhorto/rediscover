@@ -31,7 +31,6 @@ from prepare import MAX_SEQ_LEN, TIME_BUDGET, Tokenizer, evaluate_bpb, make_data
 # ---------------------------------------------------------------------------
 # GPT Model
 # ---------------------------------------------------------------------------
-
 @dataclass
 class GPTConfig:
     sequence_len: int = 2048
@@ -45,7 +44,7 @@ class GPTConfig:
 
 
 def norm(x):
-    return F.rms_norm(x, (x.size(-1),))
+    return F.layer_norm(x, (x.size(-1),))
 
 
 def has_ve(layer_idx, n_layer):
