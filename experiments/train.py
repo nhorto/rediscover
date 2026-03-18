@@ -95,7 +95,6 @@ class CausalSelfAttention(nn.Module):
         q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin)
         q, k = norm(q), norm(k)
 
-        # PyTorch SDPA (MPS-compatible, no FlashAttention 3)
         k = k.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
         v = v.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
 
@@ -103,7 +102,6 @@ class CausalSelfAttention(nn.Module):
         k = k.transpose(1, 2)
         v = v.transpose(1, 2)
 
-        # Nyström approximation
         indices = torch.randperm(T)[:self.num_samples]
         sampled_k = k[:, :, indices, :]
         sampled_v = v[:, :, indices, :]
