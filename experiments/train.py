@@ -103,19 +103,31 @@ class CausalSelfAttention(nn.Module):
         k = k.transpose(1, 2)
         v = v.transpose(1, 2)
 
-        # Nyström approximation
-        indices = torch.randperm(T)[:self.num_samples]
-        sampled_k = k[:, :, indices, :]
-        sampled_v = v[:, :, indices, :]
+        # Apply ELU+1 feature map for linear attention
+        q = F.elu(q) + 1
+        k = F.elu(k) + 1
 
-        attention_scores_sampled = torch.matmul(q, sampled_k.transpose(-2, -1)) / math.sqrt(self.head_dim)
-        attention_scores_sampled = torch.softmax(attention_scores_sampled, dim=-1)
+        # Linear attention computation
+        attention_scores = torch.einsum("bhtd,bhsd->bhts", q, k)
 
-        approx_attention_matrix = torch.matmul(attention_scores_sampled, sampled_v)
+        # Normalize attention scores
+        normalization_factor = torch.einsum("bhsd->bhs", k).unsqueeze(2)
+        attention_scores = attention_scores / (normalization_factor + 1e-6)
 
-        y = approx_attention_matrix.transpose(1, 2).contiguous().view(B, T, -1)
-        y = self.c_proj(y)
-        return y
+        # Stability: Check for NaNs and Infs in attention_scores
+        if torch.isnan(attention_scores).any() or torch.isinf(attention_scores).any():
+            raise ValueError("NaNs/Infs detected in attention scores")
+
+        attention_output = torch.einsum("bhts,bhsd->bhtd", attention_scores, v)
+
+        attention_output = attention_output.transpose(1, 2).contiguous().view(B, T, -1)
+        attention_output = self.c_proj(attention_output)
+        attention_output = F.dropout(attention_output, p=0.1, training=self.training)
+        
+        # Stability: Gradient clipping
+        torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
+
+        return attention_output
 
 class MLP(nn.Module):
     def __init__(self, config):
