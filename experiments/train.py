@@ -41,6 +41,7 @@ class GPTConfig:
     n_embd: int = 768
     window_pattern: str = "SSSL"
     num_samples: int = 64  # New field for Nyström approximation
+    top_k: int = 64  # New field for dynamic sparse attention
 
 
 def norm(x):
@@ -69,6 +70,7 @@ class CausalSelfAttention(nn.Module):
         self.n_embd = config.n_embd
         self.head_dim = self.n_embd // self.n_head
         self.num_samples = config.num_samples
+        self.top_k = config.top_k
         assert self.n_embd % self.n_head == 0
         assert self.n_kv_head <= self.n_head and self.n_head % self.n_kv_head == 0
         self.c_q = nn.Linear(self.n_embd, self.n_head * self.head_dim, bias=False)
@@ -79,6 +81,16 @@ class CausalSelfAttention(nn.Module):
         self.ve_gate = (
             nn.Linear(self.ve_gate_channels, self.n_kv_head, bias=False) if has_ve(layer_idx, config.n_layer) else None
         )
+
+    def compute_dynamic_sparse_attention(self, query, key, value, top_k):
+        attn_scores = torch.matmul(query, key.transpose(-2, -1))
+        top_k_scores, top_k_indices = torch.topk(attn_scores, top_k, dim=-1)
+        mask = torch.zeros_like(attn_scores)
+        mask.scatter_(-1, top_k_indices, 1.0)
+        sparse_attn_scores = attn_scores * mask
+        attn_weights = torch.nn.functional.softmax(sparse_attn_scores, dim=-1)
+        attn_output = torch.matmul(attn_weights, value)
+        return attn_output, attn_weights
 
     def forward(self, x, ve, cos_sin, window_size):
         B, T, C = x.size()
@@ -93,7 +105,6 @@ class CausalSelfAttention(nn.Module):
 
         cos, sin = cos_sin
         q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin)
-        q, k = norm(q), norm(k)
 
         k = k.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
         v = v.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
@@ -102,16 +113,9 @@ class CausalSelfAttention(nn.Module):
         k = k.transpose(1, 2)
         v = v.transpose(1, 2)
 
-        indices = torch.randperm(T)[:self.num_samples]
-        sampled_k = k[:, :, indices, :]
-        sampled_v = v[:, :, indices, :]
+        dynamic_output, _ = self.compute_dynamic_sparse_attention(q, k, v, self.top_k)
 
-        attention_scores_sampled = torch.matmul(q, sampled_k.transpose(-2, -1)) / math.sqrt(self.head_dim)
-        attention_scores_sampled = torch.softmax(attention_scores_sampled, dim=-1)
-
-        approx_attention_matrix = torch.matmul(attention_scores_sampled, sampled_v)
-
-        y = approx_attention_matrix.transpose(1, 2).contiguous().view(B, T, -1)
+        y = dynamic_output.transpose(1, 2).contiguous().view(B, T, -1)
         y = self.c_proj(y)
         return y
 
