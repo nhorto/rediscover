@@ -85,6 +85,8 @@ class CausalSelfAttention(nn.Module):
             nn.Linear(self.ve_gate_channels, self.n_kv_head, bias=False) if has_ve(layer_idx, config.n_layer) else None
         )
         
+        self.importance_net = nn.Linear(self.n_embd, self.n_head, bias=False)
+        
         self.learnable_mask = nn.Parameter(
             torch.ones(1, self.n_head) * config.learnable_mask_init
         )
@@ -115,7 +117,13 @@ class CausalSelfAttention(nn.Module):
         k = k.transpose(1, 2)
         v = v.transpose(1, 2)
         
+        importance_scores = self.importance_net(x)
+        importance_scores = torch.sigmoid(importance_scores)
+        importance_scores = importance_scores.transpose(1, 2).unsqueeze(-1)
+        
         y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        
+        y = y * importance_scores
         
         mask_weight = self.learnable_mask.view(1, self.n_head, 1, 1)
         y = y * (1.0 + mask_weight)
