@@ -615,11 +615,7 @@ def run_loop(
                 protect_files()
                 t0 = time.time()
                 try:
-                    prepare_code = read_file(PREPARE_PY)
-                    train_code_fixed = read_file(TRAIN_PY)
-                    training_result = runner.run(train_code_fixed, prepare_code)
-                    val_bpb = training_result.val_bpb
-                    training_output = training_result.output
+                    val_bpb, training_output = run_training()
                 finally:
                     unprotect_files()
                 training_time = time.time() - t0
