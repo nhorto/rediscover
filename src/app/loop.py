@@ -292,7 +292,7 @@ def parse_val_bpb(output: str) -> float | None:
 
 
 def run_training() -> tuple[float | None, str]:
-    """Run experiments/train.py and return (val_bpb, full_output).
+    """Run experiments/train.py locally and return (val_bpb, full_output).
 
     Returns (None, output) if training crashes or times out.
     """
@@ -314,6 +314,31 @@ def run_training() -> tuple[float | None, str]:
         return None, "TIMEOUT: Training exceeded time limit"
     except Exception as e:
         return None, f"ERROR: {e}"
+
+
+def run_training_cloud(train_code: str) -> tuple[float | None, str]:
+    """Run training on Modal cloud GPU and return (val_bpb, full_output).
+
+    Calls the deployed Modal function remotely — no local GPU needed.
+    Returns (None, output) if training crashes or times out.
+    """
+    import modal
+
+    try:
+        fn = modal.Function.from_name("rediscover", "run_experiment")
+        prepare_code = read_file(PREPARE_PY)
+        result = fn.remote(train_code=train_code, prepare_code=prepare_code)
+
+        val_bpb = result.get("val_bpb")
+        output = result.get("output", "")
+        success = result.get("success", False)
+
+        if not success:
+            return None, output
+        return val_bpb, output
+
+    except Exception as e:
+        return None, f"MODAL ERROR: {type(e).__name__}: {e}"
 
 
 def append_results_tsv(commit: str, val_bpb: float | None, status: str, description: str) -> None:
@@ -362,10 +387,12 @@ def run_loop(
     max_iterations: int = 500,
     budget: float = 50.0,
     stuck_threshold: int = 20,
+    cloud: bool = False,
 ) -> None:
     """Run the autonomous research loop."""
     print("=" * 60)
     print("REDISCOVER — Autonomous ML Research Loop")
+    print(f"Training: {'Modal Cloud GPU (A10G)' if cloud else 'Local'}")
     print("=" * 60)
 
     # Initialize providers
@@ -560,12 +587,15 @@ def run_loop(
             guards.record_result(None, "crash", f"Git error: {e}")
             continue
 
-        # Protect files and run training
-        print("  Training (5 min budget)...")
+        # Run training (cloud or local)
+        print(f"  Training ({'cloud GPU' if cloud else 'local'}, 5 min budget)...")
         protect_files()
         t0 = time.time()
         try:
-            val_bpb, training_output = run_training()
+            if cloud:
+                val_bpb, training_output = run_training_cloud(current_code)
+            else:
+                val_bpb, training_output = run_training()
         finally:
             unprotect_files()
         training_time = time.time() - t0
@@ -615,7 +645,10 @@ def run_loop(
                 protect_files()
                 t0 = time.time()
                 try:
-                    val_bpb, training_output = run_training()
+                    if cloud:
+                        val_bpb, training_output = run_training_cloud(fixed_code)
+                    else:
+                        val_bpb, training_output = run_training()
                 finally:
                     unprotect_files()
                 training_time = time.time() - t0
@@ -653,6 +686,21 @@ def run_loop(
             val_bpb, status, cost_this_cycle, cost_tracker.total_cost,
         )
 
+        # Commit results files and push to GitHub
+        try:
+            git.commit(
+                f"Results: experiment {iteration} — {status} (val_bpb={val_bpb:.6f if val_bpb else 'N/A'})",
+                files=[str(RESULTS_TSV), str(EXPERIMENT_LOG)],
+            )
+            subprocess.run(
+                ["git", "push"],
+                capture_output=True,
+                timeout=30,
+                cwd=str(PROJECT_ROOT),
+            )
+        except Exception as e:
+            print(f"  Warning: git push failed: {e}")
+
         # Update guards
         guards.record_result(val_bpb, status, result.proposal.hypothesis)
         if embedder is not None:
@@ -680,10 +728,12 @@ if __name__ == "__main__":
     parser.add_argument("--max-iterations", type=int, default=500, help="Maximum experiments to run")
     parser.add_argument("--budget", type=float, default=50.0, help="Maximum LLM spend in dollars")
     parser.add_argument("--stuck-threshold", type=int, default=20, help="Experiments without improvement before forcing novelty")
+    parser.add_argument("--cloud", action="store_true", help="Run training on Modal cloud GPU instead of local")
     args = parser.parse_args()
 
     run_loop(
         max_iterations=args.max_iterations,
         budget=args.budget,
         stuck_threshold=args.stuck_threshold,
+        cloud=args.cloud,
     )
