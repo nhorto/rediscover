@@ -501,3 +501,19 @@ This approach is novel because it does not merely apply a static sparsity patter
 **Cost this cycle:** $0.1323
 **Cumulative cost:** $0.1323
 ---
+
+## Experiment 1 — 2026-03-19 06:22:41
+**Hypothesis:** I propose that by introducing a dual-level attention mechanism where one level focuses on capturing global context and the other level captures local dependencies, we can significantly reduce redundancy in information processing and improve the efficiency of information extraction. This approach challenges the conventional assumption that all attention heads should operate uniformly across the entire sequence, allowing for specialized roles within the attention mechanism.
+**Approach:** The proposed dual-level attention mechanism will consist of two distinct attention layers:
+1. **Global Attention Layer**: This layer will focus on capturing the overall context by attending to a subset of key positions that represent the global context of the input sequence. The selection of these key positions will be based on clustering the input tokens using a learned representation, allowing the model to focus on semantically important points rather than every token in the sequence.
+   
+2. **Local Attention Layer**: This layer will operate on a fixed-size window around each token, allowing it to capture fine-grained relationships between tokens that are close to one another. The local attention will be parameterized to learn the optimal window sizes based on the input sequence characteristics.
+
+Both layers will feed into a combined output, where the global context will be weighted differently based on the task at hand, allowing the model to dynamically prioritize either global or local context. This mechanism diverges from existing attention mechanisms that treat all heads uniformly and do not differentiate between the types of contextual information being processed.
+**Papers consulted:** Reproduction Report on "Learn to Pay Attention", When to Use Efficient Self Attention? Profiling Text, Speech, Entropy- and Distance-Based Predictors From GPT-2 Attention 
+**Critique:** The proposal presents an intriguing idea but appears to struggle with originality, as similar mechanisms have already been explored in the literature. Additionally, the complexity of the dual-level at
+**Plan:** This experiment implements a simplified dual-level attention mechanism focusing solely on the global attention layer to assess its impact on model performance and to establish a baseline for future comparisons with the local attention layer.
+**Result:** val_bpb=CRASH (crash)
+**Cost this cycle:** $0.1990
+**Cumulative cost:** $0.1990
+---
