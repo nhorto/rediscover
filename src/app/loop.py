@@ -119,6 +119,31 @@ def validate_zone_structure(code: str) -> tuple[bool, str]:
     if param_1d:
         return False, f"1D nn.Parameter found ({param_1d.group(0)}) — MuonAdamW crashes on <2D params. Use 2D shape like (1, n) or register as buffer"
 
+    # Check frozen hyperparameters haven't been changed
+    frozen_params = {
+        "n_layer": r'n_layer:\s*int\s*=\s*(\d+)',
+        "n_head": r'n_head:\s*int\s*=\s*(\d+)',
+        "n_kv_head": r'n_kv_head:\s*int\s*=\s*(\d+)',
+        "n_embd": r'n_embd:\s*int\s*=\s*(\d+)',
+        "vocab_size": r'vocab_size:\s*int\s*=\s*(\d+)',
+        "sequence_len": r'sequence_len:\s*int\s*=\s*(\d+)',
+    }
+    # These are the baseline values that MUST NOT change
+    baseline_values = {"n_layer": "12", "n_head": "6", "n_kv_head": "6", "n_embd": "768", "vocab_size": "32768", "sequence_len": "2048"}
+    for param_name, pattern in frozen_params.items():
+        match = re.search(pattern, code)
+        if match and param_name in baseline_values:
+            if match.group(1) != baseline_values[param_name]:
+                return False, f"GPTConfig.{param_name} changed from {baseline_values[param_name]} to {match.group(1)} — hyperparameters are frozen, only modify attention code"
+
+    # Check for missing causal mask (causes data leakage, invalid val_bpb)
+    has_sdpa = "scaled_dot_product_attention" in code
+    has_causal_flag = "is_causal=True" in code or "is_causal = True" in code
+    has_manual_mask = "tril" in code or "causal_mask" in code
+    if not has_sdpa and not has_causal_flag and not has_manual_mask:
+        if "softmax" in code and "matmul" in code:
+            return False, "Manual attention without causal mask — use F.scaled_dot_product_attention(q, k, v, is_causal=True) or add a causal mask with torch.tril"
+
     # Check CausalSelfAttention.forward signature
     forward_match = re.search(r'def forward\(self,\s*(\w+)', code)
     if forward_match:
@@ -145,13 +170,14 @@ def quick_validate_code(code: str) -> tuple[bool, str]:
     # Insert exit-after-init: find the training loop start and replace it
     # with a quick forward pass test followed by sys.exit(0)
     validation_snippet = (
-        "\n# --- QUICK VALIDATION: test model init + one forward pass ---\n"
-        "print('Quick validation: testing forward pass...')\n"
+        "\n# --- QUICK VALIDATION: test model init + forward + backward ---\n"
+        "print('Quick validation: testing forward + backward pass...')\n"
         "try:\n"
-        "    _test_x = torch.randint(0, vocab_size, (1, 64), device=device)\n"
-        "    _test_y = torch.randint(0, vocab_size, (1, 64), device=device)\n"
-        "    with torch.no_grad():\n"
-        "        _test_loss = model(_test_x, _test_y)\n"
+        "    _test_x = torch.randint(0, vocab_size, (1, 128), device=device)\n"
+        "    _test_y = torch.randint(0, vocab_size, (1, 128), device=device)\n"
+        "    _test_loss = model(_test_x, _test_y)\n"
+        "    _test_loss.backward()\n"
+        "    model.zero_grad(set_to_none=True)\n"
         "    print(f'Quick validation PASSED: loss={_test_loss.item():.4f}')\n"
         "    import sys; sys.exit(0)\n"
         "except Exception as e:\n"
