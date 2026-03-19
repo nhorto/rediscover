@@ -56,13 +56,17 @@ PROPOSE_PROMPT = """## Research Direction
 ## Current Model Hyperparameters
 {hyperparams}
 
-Propose ONE original experiment. Your proposal must go BEYOND the literature:
+BEFORE proposing, carefully review the experiment results above. Do NOT repeat an approach that was already tried — even if it crashed. If something similar was tried, you MUST propose something fundamentally different.
+
+Propose ONE original experiment. Your proposal must go BEYOND the literature AND beyond previous experiments:
 - Combine ideas from different papers in a way that hasn't been tried
 - Question an assumption that existing methods take for granted
 - Apply a principle from the papers to a part of attention nobody has applied it to
 - Invent a mechanism inspired by (but different from) what you've read
+- If hierarchical/dual-scale attention was already tried, propose something COMPLETELY different
 
 Do NOT just propose implementing a known method. If you cite a paper, explain what you're doing DIFFERENTLY.
+Do NOT propose variations of things already in the experiment results — propose genuinely NEW directions.
 
 Return your proposal in this exact format:
 HYPOTHESIS: <what you think will improve val_bpb and why — explain your original insight>

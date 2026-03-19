@@ -44,8 +44,8 @@ class LoopGuards:
     stuck_threshold: int = 20  # no improvement in this many experiments → force novelty
     error_cascade_limit: int = 3  # consecutive crashes → force different approach
     error_hard_stop: int = 10  # consecutive crashes → stop the loop entirely
-    similarity_threshold: float = 0.9  # cosine sim between hypotheses → reject
-    max_hypothesis_history: int = 10  # how many past hypotheses to check against
+    similarity_threshold: float = 0.8  # cosine sim between hypotheses → reject
+    max_hypothesis_history: int = 50  # how many past hypotheses to check against
 
     # Internal state
     iteration: int = 0
