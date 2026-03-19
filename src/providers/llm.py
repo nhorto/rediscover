@@ -23,7 +23,7 @@ DEFAULT_MODEL_MAP: dict[str, str] = {
     "propose": "gpt-4o-mini",                      # Oct 2023 cutoff
     "critique": "gpt-4o-mini",                     # Oct 2023 cutoff
     "refine": "gpt-4o-mini",                       # Oct 2023 cutoff
-    "implement": "openrouter/anthropic/claude-sonnet-4-5-20250514",  # Full-file code quality
+    "implement": "anthropic/claude-sonnet-4-5-20250929",  # Direct Anthropic API
 }
 
 

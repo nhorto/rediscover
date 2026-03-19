@@ -137,11 +137,20 @@ WHAT YOU MUST NOT CHANGE:
 - Imports at the top of the file
 - The MLP class
 - The Block class
-- The GPT class (except GPTConfig)
+- The GPT class (except adding new GPTConfig fields)
 - The MuonAdamW optimizer
 - The training loop
 - The evaluate_bpb call
 - The prepare.py import
+
+FROZEN HYPERPARAMETERS (DO NOT CHANGE THESE VALUES IN GPTConfig):
+- sequence_len: int = 2048
+- vocab_size: int = 32768
+- n_layer: int = 12
+- n_head: int = 6
+- n_kv_head: int = 6
+- n_embd: int = 768
+You may ADD new fields to GPTConfig but NEVER change the values above.
 
 CRASH RULES:
 - All nn.Linear must use bias=False (MuonAdamW crashes on 1D bias params)
@@ -149,6 +158,7 @@ CRASH RULES:
 - forward() signature must be: forward(self, x, ve, cos_sin, window_size)
 - forward() must return [B, T, C] where C = config.n_embd
 - Always use F.scaled_dot_product_attention(q, k, v, is_causal=True) or explicit causal mask
+- Do NOT create tensors larger than [B, n_head, T, T] — anything with extra dimensions will OOM
 
 Return the COMPLETE modified train.py file. No markdown fences, no explanation."""
 
