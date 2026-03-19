@@ -29,3 +29,9 @@ reverted	N/A	0.0	crash	CRASH: This experiment introduces a hierarchical attentio
 reverted	N/A	0.0	crash	CRASH: This experiment implements a simplified contextual gating me
 reverted	N/A	0.0	crash	CRASH: This experiment refines the dual-layer attention mechanism b
 reverted	N/A	0.0	crash	CRASH: This experiment introduces head-specific positional encoding
+67ecbbb	0.005263	0.0	keep	KEEP: This experiment modifies the existing multi-head attention m (val_bpb=0.005263)
+reverted	N/A	0.0	crash	CRASH: This experiment simplifies the dual-scale attention mechanis
+reverted	N/A	0.0	crash	CRASH: This experiment implements a simplified decoupled attention 
+reverted	N/A	0.0	crash	CRASH: This experiment aims to implement a simplified hierarchical 
+reverted	N/A	0.0	crash	CRASH: This experiment introduces a lightweight head-specific gatin
+reverted	N/A	0.0	crash	CRASH: This experiment aims to implement a pilot study of the propo
