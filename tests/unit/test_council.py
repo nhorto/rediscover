@@ -258,4 +258,4 @@ class TestCouncilServicePipeline:
 
         call_kwargs = mock_complete.call_args.kwargs
         assert call_kwargs["temperature"] == 0.3
-        assert call_kwargs["max_tokens"] == 8192  # Full file output
+        assert call_kwargs["max_tokens"] == 4096  # Zone output

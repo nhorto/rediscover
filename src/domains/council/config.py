@@ -160,31 +160,46 @@ CRASH RULES:
 - Always use F.scaled_dot_product_attention(q, k, v, is_causal=True) or explicit causal mask
 - Do NOT create tensors larger than [B, n_head, T, T] — anything with extra dimensions will OOM
 
-Return the COMPLETE modified train.py file. No markdown fences, no explanation."""
+Return ONLY the modified zone code (GPTConfig + helpers + CausalSelfAttention).
+No markdown fences, no explanation, no MLP/Block/GPT/training loop."""
 
 IMPLEMENT_PROMPT = """## Implementation Plan
 {plan_text}
 
-## Complete train.py (modify and return the ENTIRE file)
+## Full train.py (READ THIS FOR CONTEXT — do not output the whole file)
+The complete file is shown below so you understand the full context: how the optimizer works,
+how parameters are grouped, how the training loop calls forward(), etc.
 ```python
 {full_train_py}
 ```
 
-Implement the plan by modifying this file. Return the COMPLETE file with your changes.
-Only modify GPTConfig, helper functions, and CausalSelfAttention. Leave everything else unchanged."""
+## Modifiable Zone (ONLY output this section, modified)
+The zone below is the ONLY code you should return. It will be spliced back into the full file.
+```python
+{zone_code}
+```
 
-IMPLEMENT_FIX_SYSTEM = """You are a PyTorch programmer fixing a broken training script.
-Fix ONLY the error described below. Do not change the approach, just fix the bug.
-Return the COMPLETE fixed train.py file. No markdown fences, no explanation."""
+Return ONLY the modified zone code. Do NOT include imports, MLP, Block, GPT class, or training loop.
+Your output should start with the GPTConfig dataclass and end with the CausalSelfAttention class."""
+
+IMPLEMENT_FIX_SYSTEM = """You are a PyTorch programmer fixing broken attention code.
+Fix ONLY the error. Do not change the approach, just fix the bug.
+Return ONLY the fixed zone code (GPTConfig + helpers + CausalSelfAttention).
+No markdown fences, no explanation."""
 
 IMPLEMENT_FIX_PROMPT = """## Error
 ```
 {error_text}
 ```
 
-## Complete train.py (fix the error and return the ENTIRE file)
+## Full train.py (for context)
 ```python
-{train_py}
+{full_train_py}
 ```
 
-Fix the specific error above. Return the COMPLETE file with the fix applied."""
+## Broken Zone Code (fix and return ONLY this section)
+```python
+{zone_code}
+```
+
+Fix the error. Return ONLY the fixed zone code."""
