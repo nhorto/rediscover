@@ -566,3 +566,77 @@ In practical terms, I will modify the `CausalSelfAttention` class to include a n
 **Cost this cycle:** $0.0644
 **Cumulative cost:** $0.1584
 ---
+
+## Experiment 1 — 2026-03-19 16:25:18
+**Hypothesis:** The current attention mechanism assumes that all tokens in a sequence should contribute equally to the attention calculation, which may not be optimal. By introducing a novel gating mechanism that dynamically adjusts the importance of each token based on its relevance to the current query, we can reduce redundancy in attention weights and improve efficiency. This approach questions the softmax normalization assumption and allows for more nuanced attention distributions.
+**Approach:** We will implement a token relevance gating mechanism that operates independently for each attention head. This mechanism will learn to assign importance scores to each token based on two aspects: (1) the semantic relevance of the token to the current query and (2) a learned context-based prior that captures patterns across the sequence. This could be implemented as follows:
+
+1. **Dynamic Relevance Scoring**: Before performing the standard attention calculation, compute a relevance score for each token. This score could be derived from a small feedforward neural network that takes the query and the corresponding keys as input, producing a scalar score for each token.
+
+2. **Gating Mechanism**: Apply a gating function that scales the softmax attention weights based on the relevance scores. This could involve multiplying the softmax output by the relevance scores (after normalizing them) to produce the final attention weights.
+
+3. **Independent Head Learning**: Each attention head will have its own set of parameters for the relevance scoring network, allowing them to learn distinct patterns and relevances based on their respective roles.
+
+By integrating this gating mechanism, we effectively allow for a mixture of learned and fixed attention distributions, which might lead to fewer redundant computations and a more efficient representation of the input sequence.
+**Papers consulted:** Faster Causal Attention Over Large Sequences Through Sparse , One Pass Streaming Algorithm for Super Long Token Attention , The Curse of Dense Low-Dimensional Information Retrieval for
+**Critique:** The proposal presents a potentially interesting direction for improving attention mechanisms through dynamic gating, but it lacks originality as it echoes concepts explored in previous works on adapti
+**Plan:** This experiment implements a dynamic token relevance gating mechanism in the attention calculation to improve efficiency and reduce redundancy in attention weights.
+**Result:** val_bpb=1.859557 (discard)
+**Cost this cycle:** $0.0194
+**Cumulative cost:** $0.0194
+---
+
+## Experiment 2 — 2026-03-19 16:38:17
+**Hypothesis:** By introducing a hierarchical attention mechanism that selectively combines global and local attention patterns while leveraging learned positional encodings for different attention heads, we can reduce redundancy and enhance the efficiency of information extraction in the model. This approach questions the assumption that all attention heads should operate uniformly and independently by allowing them to specialize in different aspects of the input data.
+**Approach:** Modify the `CausalSelfAttention` class to implement a hierarchical attention structure. This would consist of two levels of attention:
+
+1. **Global Attention Head(s)**: A subset of heads will focus on capturing long-range dependencies by processing the entire input sequence. These heads will utilize a learned global attention mask that emphasizes important tokens across the complete sequence.
+
+2. **Local Attention Head(s)**: The remaining heads will focus on local context windows, similar to sliding window attention, but with a twist. Instead of a fixed window size, the size of the local context will be adaptive based on token importance as determined by the global attention. This adaptive window will be learned during training, allowing the model to dynamically adjust which tokens are considered local based on their relevance.
+
+Additionally, each head will use a distinct learned positional encoding, allowing for different positional information to be emphasized across heads. This encoding will be orthogonal to the RoPE method currently in use, enabling heads to specialize in different frequency patterns associated with position, rather than applying the same rotation across all heads.
+**Papers consulted:** Faster Causal Attention Over Large Sequences Through Sparse , One Pass Streaming Algorithm for Super Long Token Attention , The Curse of Dense Low-Dimensional Information Retrieval for
+**Critique:** The proposal presents a potentially interesting approach to attention mechanisms; however, it lacks sufficient theoretical grounding and originality, as similar hierarchical attention concepts have be
+**Plan:** This experiment modifies the hierarchical attention mechanism in the `CausalSelfAttention` class to implement a simplified version of global and local attention heads while maintaining a focus on reducing complexity and avoiding overfitting.
+**Result:** val_bpb=1.753697 (discard)
+**Cost this cycle:** $0.0194
+**Cumulative cost:** $0.0388
+---
+
+## Experiment 3 — 2026-03-19 16:52:02
+**Hypothesis:** The current attention mechanism assumes that all tokens contribute equally to the attention computation, which may not leverage the underlying structure of the data effectively. By introducing a novel hierarchical attention mechanism that dynamically adjusts the importance of tokens based on their contextual relevance, we can reduce redundancy in attention calculations, leading to improved model efficiency and lower validation bits-per-byte (val_bpb).
+**Approach:** We propose a two-level hierarchical attention structure in which the first level computes a coarse attention distribution across broader segments of the input sequence, while the second level refines this distribution based on the specific context of each segment. The first-level attention can be implemented using a lightweight mechanism such as average pooling over grouped tokens to determine their importance. The second-level attention would then operate within these groups, focusing on the most relevant tokens based on the first level's output. This approach differs from existing methods by not only attending to individual tokens but also incorporating a grouping mechanism that allows the model to learn which segments of the input are more informative, effectively reducing the quadratic complexity of standard self-attention in a structured manner.
+**Papers consulted:** Gated recurrent neural networks discover attention, On the Optimization and Generalization of Multi-head Attenti, Reproduction Report on "Learn to Pay Attention"
+**Critique:** The proposal presents a novel approach to attention mechanisms that addresses important challenges, but it lacks a solid empirical foundation and thorough exploration of existing literature. While the
+**Plan:** This experiment implements a novel hierarchical attention mechanism with a theoretical foundation and empirical support, integrating learnable grouping strategies to enhance the model's efficiency and differentiate it from existing methods.
+**Result:** val_bpb=1.809679 (discard)
+**Cost this cycle:** $0.0368
+**Cumulative cost:** $0.0756
+---
+
+## Experiment 4 — 2026-03-19 17:05:51
+**Hypothesis:** The current attention mechanism assumes that all attention heads operate independently on the same set of queries and keys, which may lead to redundant information being processed. By introducing a mechanism where each attention head has distinct roles – for example, some heads focusing on local context while others capture global relationships – we can improve the efficiency of the attention computation. This specialization can potentially reduce the overall complexity of the attention calculation and increase the model's ability to generalize across different contexts.
+**Approach:** I propose to implement a role-based attention mechanism where each head in the multi-head attention layer is dynamically assigned a specific function during training. This can be achieved by introducing a lightweight gating mechanism that learns to modulate the contributions of each head based on the input context. Rather than treating all heads uniformly, we will define a set of roles (e.g., local, global, detail-oriented, summary) and assign heads to these roles based on a learned mapping from the input. The gating mechanism will allow for dynamic adjustment, enabling heads to specialize in their assigned roles while still collaborating through shared attention weights. Each head will still compute attention over the same keys and values but will apply different transformations to the queries and the resulting attention scores, fostering diversity in attention patterns.
+**Papers consulted:** Reproduction Report on "Learn to Pay Attention", ExGate: Externally Controlled Gating for Feature-based Atten, NeuroX: A Toolkit for Analyzing Individual Neurons in Neural
+**Critique:** The proposal presents an intriguing concept of role-based attention specialization, but it raises concerns regarding theoretical justification and practical implementation within a small model scale. 
+**Plan:** This experiment evaluates the effectiveness of a role-based attention mechanism using a simplified model and preliminary experiments to assess the dynamics of role assignment and its potential benefits.
+**Result:** val_bpb=1.758704 (discard)
+**Cost this cycle:** $0.0365
+**Cumulative cost:** $0.1121
+---
+
+## Experiment 5 — 2026-03-19 17:21:51
+**Hypothesis:** The current attention mechanism relies on uniform attention distributions across all tokens, which may overlook the inherent hierarchical structure present in language data. Instead of treating all tokens equally, we can introduce a hierarchical attention approach that dynamically allocates attention based on the syntactic structure of the input, potentially leading to more efficient information extraction and lower validation bits-per-byte (val_bpb). This can be achieved by leveraging a learned syntactic parser to guide attention distribution.
+**Approach:** We will implement a two-tiered attention mechanism where the first tier utilizes a lightweight syntactic parser (e.g., a dependency parser) to identify key phrases or constituents in the input sequence. This parser will generate a hierarchical representation of the input, highlighting which tokens should receive more attention based on their syntactic roles. The second tier will adjust the attention weights based on the hierarchical structure, allowing the model to focus more on syntactically important tokens while reducing attention to less critical ones.
+
+In detail, the changes will include:
+1. **Adding a Syntactic Parser**: Integrate a lightweight dependency parser that produces a tree structure for the input sequence. This will not require additional package imports but can be implemented using simple rules or heuristics.
+2. **Dynamic Attention Weights**: Modify the attention calculation to incorporate weights derived from the parser's output. Tokens that are key constituents (e.g., subjects, objects) will receive higher attention weights, while function words or less relevant tokens will have reduced weights.
+3. **Hierarchical Attention Mechanism**: Instead of a uniform softmax distribution across all tokens, the attention mechanism will apply a hierarchical softmax that respects the syntactic structure, allowing efficient aggregation of information from higher-level constituents.
+**Papers consulted:** Faster Causal Attention Over Large Sequences Through Sparse , The Curse of Dense Low-Dimensional Information Retrieval for, One Pass Streaming Algorithm for Super Long Token Attention 
+**Critique:** The proposal presents an interesting direction for improving attention mechanisms in language models, but it raises concerns regarding the scalability and reliability of the proposed parser-based appr
+**Plan:** This experiment evaluates the impact of a lightweight syntactic parser on attention weights in a hierarchical attention mechanism, while ensuring that the model remains computationally efficient and scalable.
+**Result:** val_bpb=1.751566 (discard)
+**Cost this cycle:** $0.0797
+**Cumulative cost:** $0.1918
+---
