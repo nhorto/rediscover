@@ -1,6 +1,5 @@
 """LLM provider: unified interface for all model calls via litellm."""
 
-import signal
 from dataclasses import dataclass, field
 
 import litellm
@@ -65,23 +64,26 @@ class LLMProvider:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
 
-        # Hard timeout via signal (litellm's timeout doesn't always fire)
-        def _timeout_handler(signum, frame):
-            raise APITimeoutError("API call exceeded 120s hard timeout")
+        # Scale timeout for large outputs (full-file ~700 lines needs more time)
+        effective_max_tokens = max_tokens if max_tokens is not None else self.max_tokens
+        api_timeout = 300 if effective_max_tokens > 4096 else 120
 
-        old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
-        signal.alarm(120)  # 2-minute hard timeout
-        try:
-            response = litellm.completion(
+        # Use threading-based timeout (signal doesn't work with C-level HTTP calls)
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                litellm.completion,
                 model=model,
                 messages=messages,
                 temperature=temperature if temperature is not None else self.temperature,
-                max_tokens=max_tokens if max_tokens is not None else self.max_tokens,
-                timeout=90,  # litellm soft timeout
+                max_tokens=effective_max_tokens,
+                timeout=api_timeout,
             )
-        finally:
-            signal.alarm(0)  # cancel alarm
-            signal.signal(signal.SIGALRM, old_handler)
+            try:
+                response = future.result(timeout=api_timeout + 30)  # extra buffer
+            except concurrent.futures.TimeoutError:
+                future.cancel()
+                raise APITimeoutError(f"API call exceeded {api_timeout}s timeout")
 
         content = response.choices[0].message.content or ""
         usage = response.usage
