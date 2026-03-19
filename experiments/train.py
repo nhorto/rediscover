@@ -35,7 +35,7 @@ from prepare import MAX_SEQ_LEN, TIME_BUDGET, Tokenizer, evaluate_bpb, make_data
 class GPTConfig:
     sequence_len: int = 2048
     vocab_size: int = 32768
-    n_layer: int = 2
+    n_layer: int = 12
     n_head: int = 6
     n_kv_head: int = 6
     n_embd: int = 768
@@ -43,6 +43,8 @@ class GPTConfig:
     num_samples: int = 64
     top_k: int = 64
     gating: bool = True
+    learnable_mask_init: float = 0.1
+    scale_contexts: int = 2
 
 
 def norm(x):
@@ -82,6 +84,10 @@ class CausalSelfAttention(nn.Module):
         self.ve_gate = (
             nn.Linear(self.ve_gate_channels, self.n_kv_head, bias=False) if has_ve(layer_idx, config.n_layer) else None
         )
+        
+        self.learnable_mask = nn.Parameter(
+            torch.ones(1, self.n_head) * config.learnable_mask_init
+        )
 
     def forward(self, x, ve, cos_sin, window_size):
         B, T, C = x.size()
@@ -111,10 +117,12 @@ class CausalSelfAttention(nn.Module):
         
         y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
         
+        mask_weight = self.learnable_mask.view(1, self.n_head, 1, 1)
+        y = y * (1.0 + mask_weight)
+        
         y = y.transpose(1, 2).contiguous().view(B, T, C)
         y = self.c_proj(y)
         return y
-
 
 class MLP(nn.Module):
     def __init__(self, config):
