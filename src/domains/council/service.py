@@ -230,7 +230,7 @@ class CouncilService:
             prompt=prompt,
             system=IMPLEMENT_SYSTEM,
             temperature=0.3,
-            max_tokens=16384,  # Full file is ~700 lines
+            max_tokens=8192,  # Full file is ~700 lines
         )
 
         _log_step(log, "implement", response)
@@ -247,7 +247,7 @@ class CouncilService:
         )
         response = self.llm.complete(
             role="implement", prompt=prompt, system=IMPLEMENT_FIX_SYSTEM,
-            temperature=0.2, max_tokens=16384,
+            temperature=0.2, max_tokens=8192,
         )
         _log_step(log, "implement_fix", response)
 
