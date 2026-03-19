@@ -36,3 +36,6 @@ reverted	N/A	0.0	crash	CRASH: This experiment aims to implement a simplified hie
 reverted	N/A	0.0	crash	CRASH: This experiment introduces a lightweight head-specific gatin
 reverted	N/A	0.0	crash	CRASH: This experiment aims to implement a pilot study of the propo
 reverted	N/A	0.0	crash	CRASH: This experiment implements a simplified dual-level attention
+reverted	N/A	0.0	crash	CRASH: This experiment implements a dual-scale attention mechanism 
+reverted	1.760766	0.0	discard	DISCARD: This experiment implements a dual-gating mechanism in the at (val_bpb=1.760766)
+reverted	N/A	0.0	crash	CRASH: This experiment refines the attention mechanism by integrati

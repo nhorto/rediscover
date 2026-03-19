@@ -517,3 +517,52 @@ Both layers will feed into a combined output, where the global context will be w
 **Cost this cycle:** $0.1990
 **Cumulative cost:** $0.1990
 ---
+
+## Experiment 1 — 2026-03-19 15:50:35
+**Hypothesis:** By introducing a dual-scale attention mechanism that combines both local and global attention patterns with a learned dynamic weighting for each head, we can more efficiently capture relevant context while minimizing redundant computations in the attention mechanism. This approach challenges the assumption that all attention heads should contribute equally to the final output and leverages the idea that different types of information (local vs. global) can be beneficial for particular tasks.
+**Approach:** The proposed method involves modifying the existing multi-head attention mechanism to implement a dual-scale attention framework. Each attention head will be dynamically assigned a weight that determines the proportion of local versus global attention it should focus on. Specifically, we will introduce two sets of attention scores: one for local context (using a sliding window) and one for global context (using standard full attention). 
+
+1. **Head-specific weighting**: Each head will have an associated learned parameter that adjusts the weight between local and global attention, allowing for flexibility in how much each head attends to local versus global information.
+   
+2. **Attention computation**: For each head, compute local attention using a fixed-size sliding window over the input sequence, while simultaneously computing global attention over the entire sequence. The final attention scores for each head will be obtained by combining the local and global attention scores based on the learned weights.
+
+3. **Dynamic gating mechanism**: Introduce a gating mechanism that will modulate the influence of local and global attention for each head, which can adapt during training based on the data being processed.
+
+This approach is novel compared to existing work as it allows for a more fine-grained control of the attention distribution, enabling different heads to specialize in either local or global dependencies rather than treating all heads uniformly. It also questions the assumption that full attention is always necessary, allowing for potentially lower computational complexity while retaining robust performance.
+**Papers consulted:** Attention Is Not All You Need Anymore, Which Transformer to Favor: A Comparative Analysis of Effici, Linear Log-Normal Attention with Unbiased Concentration
+**Critique:** The proposal presents an interesting approach to attention mechanisms in ML but lacks a robust theoretical framework and evidence to support its efficacy. While the dual-scale attention concept is inn
+**Plan:** This experiment implements a dual-scale attention mechanism with head-specific weighting and a dynamic gating mechanism to enhance the attention capabilities of our model by allowing heads to specialize in local or global dependencies.
+**Result:** val_bpb=CRASH (crash)
+**Cost this cycle:** $0.0756
+**Cumulative cost:** $0.0756
+---
+
+## Experiment 2 — 2026-03-19 16:03:57
+**Hypothesis:** I propose that attention mechanisms can be improved by integrating a learned gating mechanism that modulates both the attention weights and the interaction among queries, keys, and values. The insight here is that rather than treating attention weights as static probabilities, we can apply a dynamic gating strategy that allows the model to learn the relevance of different heads and their respective contributions to the attention process. This approach challenges the assumption that attention weights should always be normalized to sum to one, allowing for more flexibility in how information is aggregated.
+**Approach:** I will implement a dual-gating mechanism where each attention head will have a dedicated learned gating vector that modulates both the attention weights and the contributions of the keys and values. Specifically, each head will compute a gating scalar based on the input sequence, which will control the flow of information from the keys and values to the output. The attention weights will then be adjusted by multiplying them by the gating scalar before applying softmax normalization. This will allow for some heads to effectively "turn off" their contribution for certain tokens, enabling a more selective focus on relevant information. 
+
+In practical terms, I will modify the `CausalSelfAttention` class to include a new gating mechanism that leverages a lightweight feedforward network to compute the gating scalars based on the attention scores before the softmax step. This is different from existing methods that use fixed attention weights or simple learned parameters, as it introduces a dynamic component that adapts to the input sequence context.
+**Papers consulted:** Faster Causal Attention Over Large Sequences Through Sparse , One Pass Streaming Algorithm for Super Long Token Attention , The Curse of Dense Low-Dimensional Information Retrieval for
+**Critique:** The proposal presents an interesting idea to improve attention mechanisms through a learned gating strategy; however, it lacks clarity on its originality compared to existing methods. The added comple
+**Plan:** This experiment implements a dual-gating mechanism in the attention model to dynamically modulate attention weights and enhance the relevance of different heads based on input context.
+**Result:** val_bpb=1.760766 (discard)
+**Cost this cycle:** $0.0185
+**Cumulative cost:** $0.0941
+---
+
+## Experiment 3 — 2026-03-19 16:05:44
+**Hypothesis:** Leveraging a learned attention sparsity pattern based on token frequency and relevance could enhance the efficiency of the attention mechanism. Instead of using a fixed sliding window or a fully dense attention mechanism, we can dynamically adjust the attention weights based on the contextual importance of tokens. This would allow for more efficient use of the attention mechanism by reducing redundancy and focusing on the most relevant tokens, potentially lowering validation bits-per-byte (val_bpb).
+**Approach:** 1. **Token Frequency Analysis**: Introduce a module that computes the frequency of each token within the input sequence. This module will analyze the number of times each token appears in the current context, allowing us to understand which tokens are more relevant to the ongoing conversation or text.
+  
+2. **Learned Sparsity Patterns**: Use the frequency information to create a learned attention mask that dynamically adjusts the attention weights. This mask will prioritize attention on tokens with higher relevance (based on their frequency and contextual importance) while potentially zeroing out or significantly reducing attention to less relevant tokens.
+
+3. **Attention Weight Adjustment**: Integrate this learned mask into the existing attention computation. When calculating attention scores, apply the mask to scale down the weights of less relevant tokens, effectively reducing their influence on the output. This is different from static sparse attention mechanisms, as the mask will be learned and adapt to the input data, rather than being predetermined.
+
+4. **Gating Mechanism**: Implement a gating mechanism similar to the ResFormer approach, but instead of gating value embeddings, apply the gating to both queries and keys based on the learned mask. This allows for more nuanced control over which tokens contribute to the attention scores.
+**Papers consulted:** Attention Visualizer Package: Revealing Word Importance for , Gated recurrent neural networks discover attention, Emergence and Function of Abstract Representations in Self-S
+**Critique:** The proposal presents a conceptually sound hypothesis, but it risks redundancy with existing techniques in the attention mechanism domain. Its originality is questionable, as it appears to be a variat
+**Plan:** This experiment refines the attention mechanism by integrating a learned attention mask that dynamically adjusts weights based on token relevance, while ensuring the approach is simplified to mitigate overfitting risks.
+**Result:** val_bpb=CRASH (crash)
+**Cost this cycle:** $0.0644
+**Cumulative cost:** $0.1584
+---
