@@ -14,14 +14,16 @@ class APITimeoutError(Exception):
 # Suppress litellm's verbose logging
 litellm.suppress_debug_info = True
 
-# Role → model mapping (direct OpenAI API)
-# All models have Oct 2023 knowledge cutoff — valid for retrodiction.
+# Role → model mapping
+# Council roles use knowledge-limited models (Oct 2023 cutoff) for retrodiction.
+# Implement uses Sonnet 4.5 with full-file context for code quality.
+# TO REVERT: change implement back to "gpt-4o-2024-11-20"
 DEFAULT_MODEL_MAP: dict[str, str] = {
-    "scan": "gpt-4o-mini",              # Oct 2023 cutoff, cheap, fast
-    "propose": "gpt-4o-mini",            # Oct 2023 cutoff, cheap, fast
-    "critique": "gpt-4o-mini",           # Oct 2023 cutoff, cheap, fast
-    "refine": "gpt-4o-mini",             # Oct 2023 cutoff, cheap, fast
-    "implement": "gpt-4o-2024-11-20",    # Oct 2023 cutoff, best code quality
+    "scan": "gpt-4o-mini",                        # Oct 2023 cutoff
+    "propose": "gpt-4o-mini",                      # Oct 2023 cutoff
+    "critique": "gpt-4o-mini",                     # Oct 2023 cutoff
+    "refine": "gpt-4o-mini",                       # Oct 2023 cutoff
+    "implement": "openrouter/anthropic/claude-sonnet-4-5-20250514",  # Full-file code quality
 }
 
 

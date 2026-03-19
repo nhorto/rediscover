@@ -121,102 +121,60 @@ ADDRESSES:
 - <how you addressed concern 1>
 - <how you addressed concern 2>"""
 
-IMPLEMENT_SYSTEM = """You are an expert PyTorch programmer modifying a transformer's attention mechanism.
-You will receive ONLY the modifiable zone of a training script — the part you can change.
-Return ONLY the modified zone code. The rest of the file is frozen and will be spliced around your output.
+IMPLEMENT_SYSTEM = """You are a PyTorch code translator. You receive a complete train.py file and an implementation plan. Your job is to modify the file to implement the plan.
 
-Your output must contain:
-1. The GPTConfig dataclass (you may add new fields)
-2. Helper functions (norm, has_ve, apply_rotary_emb — you may modify or add new ones)
-3. The CausalSelfAttention class (you may change internals)
+ROLE CONSTRAINT: You are a CODE TRANSLATOR, not a researcher.
+- Implement EXACTLY what the plan describes. Nothing more, nothing less.
+- Do NOT add techniques, optimizations, or ideas from your own knowledge.
+- Do NOT deviate from the plan.
 
-You may add new helper functions, new nn.Module classes, or new GPTConfig fields.
-You may NOT add new imports (the frozen code already has: torch, torch.nn, torch.nn.functional as F, math).
+WHAT YOU CAN CHANGE:
+- The GPTConfig dataclass (add new fields)
+- Helper functions (norm, has_ve, apply_rotary_emb — modify or add new ones)
+- The CausalSelfAttention class (change internals, add methods)
 
-CRITICAL RULES TO AVOID CRASHES:
-- All nn.Parameter must be 2D+ (MuonAdamW crashes on 1D params). Use shape (1, n) not (n,).
-- Never use bias=True on nn.Linear (MuonAdamW crashes). Always bias=False.
-- norm() helper must exist (used by frozen code).
+WHAT YOU MUST NOT CHANGE:
+- Imports at the top of the file
+- The MLP class
+- The Block class
+- The GPT class (except GPTConfig)
+- The MuonAdamW optimizer
+- The training loop
+- The evaluate_bpb call
+- The prepare.py import
+
+CRASH RULES:
+- All nn.Linear must use bias=False (MuonAdamW crashes on 1D bias params)
+- All nn.Parameter must be 2D+ shape, e.g. (1, n) not (n,)
 - forward() signature must be: forward(self, x, ve, cos_sin, window_size)
-- forward() must return tensor of shape [B, T, C] where C = config.n_embd.
-- c_proj must project back to n_embd dimension.
+- forward() must return [B, T, C] where C = config.n_embd
+- Always use F.scaled_dot_product_attention(q, k, v, is_causal=True) or explicit causal mask
 
-Return ONLY the Python code, no markdown fences, no explanation."""
+Return the COMPLETE modified train.py file. No markdown fences, no explanation."""
 
 IMPLEMENT_PROMPT = """## Implementation Plan
 {plan_text}
 
-{frozen_context}
-
-{examples}
-
-## TENSOR SHAPE REFERENCE (verify your code matches these)
-With the current config (n_head=2, n_kv_head=2, n_embd=256, head_dim=128, sequence_len=2048):
-- x input to forward(): [B, T, 256]
-- After c_q(x): [B, T, 256] → view as [B, T, 2, 128]
-- After c_k(x): [B, T, 256] → view as [B, T, 2, 128]
-- After c_v(x): [B, T, 256] → view as [B, T, 2, 128]
-- ve (value embeddings): [B, T, 256] → view as [B, T, 2, 128] (or None)
-- cos_sin: each is [1, T, 1, 64] (half of head_dim)
-- After apply_rotary_emb: same shape as input [B, T, n_head, head_dim]
-- For SDPA: q,k,v must be [B, n_head, T, head_dim] (transpose dims 1,2)
-- Output of forward(): [B, T, 256] (must match input C dimension)
-
-## INTERFACE CONTRACT (DO NOT CHANGE)
-- __init__(self, config, layer_idx) — config is GPTConfig, layer_idx is int
-- forward(self, x, ve, cos_sin, window_size) → returns [B, T, C] tensor
-- c_proj must project back to n_embd dimension
-- If you replace the attention mechanism, the output shape MUST still be [B, T, C]
-
-## Current Modifiable Zone (ONLY this code — modify and return)
+## Complete train.py (modify and return the ENTIRE file)
 ```python
-{zone_code}
+{full_train_py}
 ```
 
-Modify this code according to the plan. Return ONLY the modified zone code.
-No imports, no MLP, no Block, no GPT class, no training loop.
-Double-check all tensor shapes before returning."""
+Implement the plan by modifying this file. Return the COMPLETE file with your changes.
+Only modify GPTConfig, helper functions, and CausalSelfAttention. Leave everything else unchanged."""
 
-IMPLEMENT_FIX_SYSTEM = """You are an expert PyTorch programmer fixing a broken attention mechanism.
-The previous code had an error. Fix ONLY the error — do not change the approach, just fix the bug.
+IMPLEMENT_FIX_SYSTEM = """You are a PyTorch programmer fixing a broken training script.
+Fix ONLY the error described below. Do not change the approach, just fix the bug.
+Return the COMPLETE fixed train.py file. No markdown fences, no explanation."""
 
-COMMON MISTAKES AND FIXES:
-- Shape mismatch in view/reshape: count the dimensions. q after c_q is [B, T, n_head*head_dim], view as [B, T, n_head, head_dim].
-- 1D nn.Parameter: MuonAdamW crashes. Use shape (1, n) not (n,). Or use register_buffer for non-learned values.
-- bias=True on nn.Linear: MuonAdamW crashes. Always use bias=False.
-- Missing .contiguous() before .view(): needed after transpose.
-- Output shape wrong: forward() must return [B, T, C] where C = n_embd.
-
-Return ONLY the fixed modifiable zone code (GPTConfig + helpers + CausalSelfAttention).
-No markdown fences, no explanation."""
-
-IMPLEMENT_FIX_PROMPT = """## Error from Previous Attempt
-The code crashed with this error. Read it carefully and fix the SPECIFIC issue.
+IMPLEMENT_FIX_PROMPT = """## Error
 ```
 {error_text}
 ```
 
-{frozen_context}
-
-## TENSOR SHAPE REFERENCE (verify your fix matches these)
-With the current config (n_head=2, n_kv_head=2, n_embd=256, head_dim=128, sequence_len=2048):
-- x input to forward(): [B, T, 256]
-- After c_q(x): [B, T, 256] → view as [B, T, 2, 128]
-- After c_k(x): [B, T, 256] → view as [B, T, 2, 128]
-- After c_v(x): [B, T, 256] → view as [B, T, 2, 128]
-- ve (value embeddings): [B, T, 256] → view as [B, T, 2, 128] (or None)
-- cos_sin: each is [1, T, 1, 64] (half of head_dim)
-- For SDPA: q,k,v must be [B, n_head, T, head_dim] (transpose dims 1,2)
-- Output of forward(): [B, T, 256] (must match input C dimension)
-
-## INTERFACE CONTRACT (DO NOT CHANGE)
-- __init__(self, config, layer_idx) — config is GPTConfig, layer_idx is int
-- forward(self, x, ve, cos_sin, window_size) → returns [B, T, C] tensor
-- c_proj must project back to n_embd dimension
-
-## Broken Code (fix and return)
+## Complete train.py (fix the error and return the ENTIRE file)
 ```python
 {train_py}
 ```
 
-Fix the error. Return ONLY the fixed zone code, no markdown fences, no explanation."""
+Fix the specific error above. Return the COMPLETE file with the fix applied."""

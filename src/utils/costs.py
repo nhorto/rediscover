@@ -17,6 +17,10 @@ MODEL_PRICES: dict[str, tuple[float, float]] = {
     # Direct API
     "o1": (15.0, 60.0),
     "gpt-4o-2024-05-13": (5.0, 15.0),
+    "gpt-4o-2024-11-20": (2.5, 10.0),
+    "gpt-4o-mini": (0.15, 0.60),
+    # Anthropic (via OpenRouter)
+    "openrouter/anthropic/claude-sonnet-4-5-20250514": (3.0, 15.0),
     # Local (Ollama) — free
     "ollama/deepseek-coder:33b": (0.0, 0.0),
     "ollama/mixtral:8x7b": (0.0, 0.0),

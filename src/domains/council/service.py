@@ -39,7 +39,8 @@ from src.domains.council.types import (
 from src.domains.literature.service import LiteratureService
 from src.providers.llm import LLMProvider
 from src.types import Paper
-from src.utils.code_splicing import extract_modifiable_zone, get_frozen_context, replace_modifiable_zone
+# Zone extraction no longer used — full-file approach (Option 2)
+# from src.utils.code_splicing import extract_modifiable_zone, get_frozen_context, replace_modifiable_zone
 
 
 def _log_step(log: list[dict], step: str, response) -> None:
@@ -209,66 +210,46 @@ class CouncilService:
         )
 
     def _implement(self, plan: ExperimentPlan, train_py: str, log: list[dict]) -> tuple[str, str]:
-        """Write attention code changes using targeted zone extraction.
+        """Write code changes by sending the FULL train.py to the model.
 
-        Instead of rewriting all 500 lines, we extract the modifiable zone (~60-100 lines),
-        send only that to the model, and splice the result back into the full file.
+        The model sees the complete file (including optimizer, training loop, etc.)
+        and returns the complete modified file. This gives it full context to avoid
+        breaking invariants like MuonAdamW parameter constraints.
         """
         plan_text = (
             f"DESCRIPTION: {plan.description}\n"
             f"CODE_CHANGES: {plan.code_changes_summary}"
         )
 
-        # Extract the modifiable zone and frozen context
-        _, zone_code, _ = extract_modifiable_zone(train_py)
-        frozen_context = get_frozen_context(train_py)
-
-        from src.domains.council.examples import BASELINE_SDPA_EXAMPLE, EXAMPLES_PATTERNS_NOTE, NYSTROM_EXAMPLE
-
-        examples = f"{BASELINE_SDPA_EXAMPLE}\n\n{NYSTROM_EXAMPLE}\n\n{EXAMPLES_PATTERNS_NOTE}"
         prompt = IMPLEMENT_PROMPT.format(
             plan_text=plan_text,
-            frozen_context=frozen_context,
-            zone_code=zone_code,
-            examples=examples,
+            full_train_py=train_py,
         )
         response = self.llm.complete(
             role="implement",
             prompt=prompt,
             system=IMPLEMENT_SYSTEM,
             temperature=0.3,
-            max_tokens=4096,  # Zone is ~60-100 lines but allow room for new helpers
+            max_tokens=16384,  # Full file is ~700 lines
         )
 
         _log_step(log, "implement", response)
 
-        # Clean the response and splice back into the full file
-        new_zone = clean_code_response(response.content)
-        full_code = replace_modifiable_zone(train_py, new_zone)
-        return full_code, response.content
+        new_code = clean_code_response(response.content)
+        return new_code, response.content
 
     def fix_code(self, broken_code: str, error_text: str, log: list[dict]) -> tuple[str, str]:
-        """Fix broken code by sending the error + modifiable zone to the model."""
+        """Fix broken code by sending the error + full file to the model."""
         error_truncated = error_text[:2000]
-        try:
-            _, broken_zone, _ = extract_modifiable_zone(broken_code)
-            frozen_context = get_frozen_context(broken_code)
-        except ValueError:
-            broken_zone = broken_code
-            frozen_context = ""
 
         prompt = IMPLEMENT_FIX_PROMPT.format(
-            error_text=error_truncated, train_py=broken_zone, frozen_context=frozen_context,
+            error_text=error_truncated, train_py=broken_code,
         )
         response = self.llm.complete(
             role="implement", prompt=prompt, system=IMPLEMENT_FIX_SYSTEM,
-            temperature=0.2, max_tokens=2048,
+            temperature=0.2, max_tokens=16384,
         )
         _log_step(log, "implement_fix", response)
 
-        new_zone = clean_code_response(response.content)
-        try:
-            return replace_modifiable_zone(broken_code, new_zone), response.content
-        except ValueError:
-            return new_zone, response.content
+        return clean_code_response(response.content), response.content
 
