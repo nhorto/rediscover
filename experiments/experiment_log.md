@@ -640,3 +640,72 @@ In detail, the changes will include:
 **Cost this cycle:** $0.0797
 **Cumulative cost:** $0.1918
 ---
+
+## Experiment 1 — 2026-03-19 20:12:34
+**Hypothesis:** I propose that attention weights can be dynamically adjusted based on the semantic relevance of the tokens in the query and key pairs, rather than relying solely on their positional or content-based similarities. By incorporating a learned relevance scoring mechanism that evaluates the importance of tokens in a context-sensitive manner, we can reduce redundancy in attention computations and improve the overall efficiency of the attention mechanism. This can lead to a more discriminative allocation of attention weights, thereby lowering validation bits-per-byte (val_bpb).
+**Approach:** The proposed experiment involves implementing a dynamic relevance gating mechanism that operates on the query and key embeddings before computing the attention scores. This gating mechanism will utilize a small neural network that takes the query and key embeddings as input and outputs a relevance score for each token. Specifically, the process can be broken down into the following steps:
+
+1. **Relevance Calculation**: For each query vector, compute a relevance score against all key vectors using a learned feedforward network. This network will take concatenated query and key vectors as input and output a scalar score that indicates how relevant the key is to the query.
+
+2. **Gating Mechanism**: Use the computed relevance scores to modulate the attention weights. Instead of applying softmax normalization directly on the attention scores, we will multiply the attention scores by the relevance scores before normalization. This will effectively allow less relevant tokens to contribute minimally to the final attention distribution.
+
+3. **Combine with Existing Mechanisms**: This dynamic gating can be applied alongside the existing grouped query attention mechanism to enhance its performance, allowing each head to focus more on contextually important tokens while still leveraging the benefits of multi-head attention.
+
+4. **Training**: The relevance scoring network will be trained jointly with the rest of the model, allowing it to learn to adaptively focus on the most informative parts of the input sequence.
+**Papers consulted:** Faster Causal Attention Over Large Sequences Through Sparse , One Pass Streaming Algorithm for Super Long Token Attention , Attention, Distillation, and Tabularization: Towards Practic
+**Critique:** While the proposal presents a novel approach to adjusting attention weights based on semantic relevance, it faces significant challenges regarding empirical support and previous attempts that have yie
+**Plan:** This experiment implements a dynamic relevance gating mechanism that modulates attention weights based on a learned relevance scoring system, while establishing a baseline with a simpler heuristic approach to evaluate effectiveness.
+**Result:** val_bpb=1.174742 (keep)
+**Cost this cycle:** $0.0187
+**Cumulative cost:** $0.0187
+---
+
+## Experiment 2 — 2026-03-19 20:38:21
+**Hypothesis:** I propose that attention could be improved by introducing a multi-level attention mechanism that distinguishes between local and global contexts more explicitly. Instead of treating all tokens uniformly, we can create dedicated attention heads that specialize in either local or global information processing. This would allow the model to better focus on pertinent information depending on the context of the input sequence, potentially leading to reduced redundancy in attention calculations and improved efficiency.
+**Approach:** The proposed changes involve modifying the `CausalSelfAttention` class to incorporate a multi-level attention mechanism that features two types of attention heads: local heads and global heads. Local heads will focus on a limited window of neighboring tokens, while global heads will capture relationships across the entire sequence. Each token's representation will be processed through both types of heads, and their outputs will be combined dynamically based on the context. A gating mechanism can be implemented to learn the optimal weights for combining the outputs of local and global heads for each token.
+
+This approach is different from existing methods, which typically employ a single attention mechanism across all heads without distinguishing the roles of local and global contexts explicitly. Instead, by enforcing specialization in attention heads, we expect to reduce the overall complexity of attention calculations while maintaining or even enhancing the relevance of captured information.
+**Papers consulted:** Reproduction Report on "Learn to Pay Attention", When to Use Efficient Self Attention? Profiling Text, Speech, Gated recurrent neural networks discover attention
+**Critique:** The proposal presents an interesting idea that has the potential to improve attention mechanisms by explicitly separating local and global contexts. However, it would benefit from more clarity on impl
+**Plan:** This experiment implements a multi-level attention mechanism by introducing local and global attention heads in the `CausalSelfAttention` class, allowing the model to process local and global contexts more effectively while incorporating a gating mechanism for optimal output combination.
+**Result:** val_bpb=1.173949 (keep)
+**Cost this cycle:** $0.1310
+**Cumulative cost:** $0.1497
+---
+
+## Experiment 3 — 2026-03-19 20:47:31
+**Hypothesis:** Current attention mechanisms rely heavily on the softmax function to normalize attention scores, which can lead to inefficiencies by assigning non-zero attention to all tokens, even those that are irrelevant. My insight is to explore a hybrid attention mechanism that combines learned attention scores with a hard thresholding approach, enabling the model to selectively ignore tokens that fall below a certain relevance threshold based on their learned importance. This could enhance the model's ability to focus on the most pertinent information, potentially reducing the validation bits-per-byte.
+**Approach:** I propose introducing a two-part attention mechanism within the `CausalSelfAttention` class. The first part retains the existing softmax attention computation to capture the contextual relationships between tokens. The second part introduces a learned gating mechanism that evaluates the relevance of each token based on a scalar value learned during training. Specifically, after computing the attention scores, we apply a thresholding mechanism: if a token's relevance score is below a pre-defined learned threshold, its attention weight is set to zero, effectively ignoring it in the final attention computation. This dual mechanism allows the model to benefit from the expressiveness of softmax while also incorporating a focused attention strategy.
+**Papers consulted:** Gated recurrent neural networks discover attention, Settling the Reward Hypothesis, Reproduction Report on "Learn to Pay Attention"
+**Critique:** The proposal presents an interesting approach to enhancing attention mechanisms through learned gating and thresholding, but it may lack originality if similar techniques have already been explored in
+**Plan:** This experiment refines the proposed hybrid attention mechanism by incorporating a soft gating approach instead of hard thresholding to maintain contextual information while selectively focusing on relevant tokens.
+**Result:** val_bpb=1.223090 (discard)
+**Cost this cycle:** $0.0543
+**Cumulative cost:** $0.2040
+---
+
+## Experiment 4 — 2026-03-19 20:57:17
+**Hypothesis:** I propose that attention mechanisms can be improved by introducing a dual-path attention structure that separates the computation of attention for essential (high-frequency) tokens and non-essential (low-frequency) tokens. This approach challenges the assumption that all tokens should receive uniform treatment in terms of attention, allowing for a more efficient allocation of resources and potentially reducing redundancy in the attention matrix.
+**Approach:** The proposed dual-path attention mechanism will consist of two distinct attention computations:
+1. An essential attention path that focuses on high-frequency tokens (e.g., those that appear more frequently in the dataset or are deemed more important based on learned criteria). This path will utilize a dense attention mechanism to ensure that these tokens receive adequate representation.
+2. A non-essential attention path that employs a sparse attention mechanism for low-frequency tokens. This path will leverage learned sparsity patterns to reduce the computational load by ignoring irrelevant tokens or applying a lower-dimensional representation.
+
+To implement this, I will introduce a gating mechanism that classifies tokens into essential and non-essential categories based on their frequency or importance. The model will compute attention separately for each category and then combine the results, allowing for a more nuanced and efficient attention distribution.
+**Papers consulted:** Faster Causal Attention Over Large Sequences Through Sparse , The Curse of Dense Low-Dimensional Information Retrieval for, A new solution and concrete implementation steps for Artific
+**Critique:** While the proposal introduces a novel perspective on attention mechanisms, there are concerns regarding the practicality of the dual-path structure at the proposed model scale and the sufficiency of t
+**Plan:** This experiment refines the proposed dual-path attention mechanism by incorporating a contextual relevance criterion for token importance and increasing the model architecture's capacity to better evaluate the efficacy of the mechanism.
+**Result:** val_bpb=1.699868 (discard)
+**Cost this cycle:** $0.0570
+**Cumulative cost:** $0.2610
+---
+
+## Experiment 5 — 2026-03-19 21:07:58
+**Hypothesis:** I propose that attention mechanisms can be improved by introducing a structural learning approach that allows attention heads to dynamically specialize based on the characteristics of the input sequence. By employing a meta-attention mechanism that learns to adaptively weight the contributions of each head based on contextual relevance, we can reduce redundancy and enhance the efficiency of information extraction. This insight comes from the observation that current attention heads operate uniformly, potentially diluting the model's capacity to focus on different aspects of the input.
+**Approach:** The proposed method introduces a "Contextual Head Weighting" mechanism, where each attention head's output is modulated by a learned scalar weight determined by the context of the input sequence. Specifically, after the attention scores are computed, a lightweight meta-network will process the input embeddings to generate a set of weights for each attention head. Each head will then multiply its attention output by its corresponding weight, allowing for dynamic specialization. This approach diverges from existing works, which typically use fixed attention heads without considering their contextual relevance, leading to potential redundancies.
+**Papers consulted:** Faster Causal Attention Over Large Sequences Through Sparse , One Pass Streaming Algorithm for Super Long Token Attention , Transformer-VQ: Linear-Time Transformers via Vector Quantiza
+**Critique:** The proposal presents an interesting idea that could enhance the efficiency of attention mechanisms by allowing heads to specialize based on context. However, it may lack originality if it does not su
+**Plan:** This experiment implements a "Contextual Head Weighting" mechanism that allows attention heads to dynamically specialize based on the input context, aiming to enhance the efficiency of information extraction without introducing excessive computational overhead.
+**Result:** val_bpb=1.177764 (discard)
+**Cost this cycle:** $0.1588
+**Cumulative cost:** $0.4198
+---

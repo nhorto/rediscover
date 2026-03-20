@@ -44,3 +44,8 @@ reverted	1.753697	0.0	discard	DISCARD: This experiment modifies the hierarchical
 reverted	1.809679	0.0	discard	DISCARD: This experiment implements a novel hierarchical attention me (val_bpb=1.809679)
 reverted	1.758704	0.0	discard	DISCARD: This experiment evaluates the effectiveness of a role-based  (val_bpb=1.758704)
 reverted	1.751566	0.0	discard	DISCARD: This experiment evaluates the impact of a lightweight syntac (val_bpb=1.751566)
+ea4fc0a	1.174742	0.0	keep	KEEP: This experiment implements a dynamic relevance gating mechan (val_bpb=1.174742)
+006460a	1.173949	0.0	keep	KEEP: This experiment implements a multi-level attention mechanism (val_bpb=1.173949)
+reverted	1.223090	0.0	discard	DISCARD: This experiment refines the proposed hybrid attention mechan (val_bpb=1.223090)
+reverted	1.699868	0.0	discard	DISCARD: This experiment refines the proposed dual-path attention mec (val_bpb=1.699868)
+reverted	1.177764	0.0	discard	DISCARD: This experiment implements a "Contextual Head Weighting" mec (val_bpb=1.177764)
