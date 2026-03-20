@@ -43,6 +43,8 @@ class GPTConfig:
     trm_hidden_dim: int = 128
     static_attention_threshold: float = 0.5
     dynamic_weight_enabled: bool = True
+    num_global_tokens: int = 64
+    use_hierarchical_attention: bool = True
 
 
 def norm(x):
@@ -63,36 +65,6 @@ def apply_rotary_emb(x, cos, sin):
     return torch.cat([y1, y2], 3)
 
 
-def calculate_static_attention_mask(idx, threshold):
-    """
-    Compute a static attention mask based on token frequency/importance.
-    Returns a [B, T, T] mask where important tokens get higher weights.
-    """
-    B, T = idx.size()
-    device = idx.device
-    
-    # Compute token importance based on frequency in the sequence
-    # For each position, count how many times each token appears
-    token_counts = torch.zeros(B, T, device=device, dtype=torch.float32)
-    
-    for i in range(T):
-        token = idx[:, i:i+1]  # [B, 1]
-        matches = (idx == token).float()  # [B, T]
-        token_counts[:, i] = matches.sum(dim=1)
-    
-    # Normalize to [0, 1] range per sequence
-    token_counts = token_counts / (T + 1e-8)
-    
-    # Create importance mask: [B, T]
-    importance = (token_counts >= threshold).float()
-    
-    # Expand to attention mask shape [B, T, T]
-    # Each query position attends more to important key positions
-    static_mask = importance.unsqueeze(1).expand(B, T, T)
-    
-    return static_mask
-
-
 class CausalSelfAttention(nn.Module):
     def __init__(self, config, layer_idx):
         super().__init__()
@@ -101,6 +73,7 @@ class CausalSelfAttention(nn.Module):
         self.n_embd = config.n_embd
         self.head_dim = self.n_embd // self.n_head
         self.config = config
+        self.layer_idx = layer_idx
         assert self.n_embd % self.n_head == 0
         assert self.n_kv_head <= self.n_head and self.n_head % self.n_kv_head == 0
         
@@ -114,27 +87,90 @@ class CausalSelfAttention(nn.Module):
             nn.Linear(self.ve_gate_channels, self.n_kv_head, bias=False) if has_ve(layer_idx, config.n_layer) else None
         )
         
-        # Dynamic weight computation for hybrid attention
-        if config.dynamic_weight_enabled:
-            self.dynamic_weight_proj = nn.Linear(self.n_embd, self.n_head, bias=False)
+        # Hierarchical attention components
+        if config.use_hierarchical_attention:
+            self.num_global_tokens = config.num_global_tokens
+            # Learnable token importance weights for selecting global tokens
+            self.token_importance = nn.Linear(self.n_embd, 1, bias=False)
+            
+            # Global attention projections
+            self.c_q_global = nn.Linear(self.n_embd, self.n_head * self.head_dim, bias=False)
+            self.c_k_global = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
+            self.c_v_global = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
+            
+            # Learnable sparsity gate for local attention
+            self.sparsity_gate = nn.Linear(self.n_embd, self.n_head, bias=False)
 
-    def compute_dynamic_weight(self, x):
+    def select_representative_tokens(self, x):
         """
-        Compute dynamic weight to balance learned and static attention.
-        Returns [B, n_head, T, 1] weights.
+        Select representative tokens based on learned importance scores.
+        Returns indices and the selected tokens.
         """
         B, T, C = x.size()
         
-        # Project to per-head weights
-        weights = self.dynamic_weight_proj(x)  # [B, T, n_head]
-        weights = torch.sigmoid(weights)  # Normalize to [0, 1]
+        # Compute importance scores for each token
+        importance_scores = self.token_importance(x).squeeze(-1)  # [B, T]
         
-        # Reshape to [B, n_head, T, 1] for broadcasting
-        weights = weights.transpose(1, 2).unsqueeze(-1)
+        # Select top-k tokens based on importance
+        k = min(self.num_global_tokens, T)
+        topk_values, topk_indices = torch.topk(importance_scores, k, dim=-1)  # [B, k]
         
-        return weights
+        # Gather the representative tokens
+        # Expand indices for gathering
+        batch_indices = torch.arange(B, device=x.device).unsqueeze(1).expand(B, k)
+        representative_tokens = x[batch_indices, topk_indices]  # [B, k, C]
+        
+        return representative_tokens, topk_indices
 
-    def forward(self, x, ve, cos_sin, window_size):
+    def global_attention(self, x, cos_sin):
+        """
+        Compute global attention over representative tokens.
+        Returns global context that can be integrated with local attention.
+        """
+        B, T, C = x.size()
+        
+        # Select representative tokens
+        repr_tokens, repr_indices = self.select_representative_tokens(x)  # [B, k, C]
+        k = repr_tokens.size(1)
+        
+        # Compute Q, K, V for global attention
+        q_global = self.c_q_global(x).view(B, T, self.n_head, self.head_dim)
+        k_global = self.c_k_global(repr_tokens).view(B, k, self.n_kv_head, self.head_dim)
+        v_global = self.c_v_global(repr_tokens).view(B, k, self.n_kv_head, self.head_dim)
+        
+        # Apply rotary embeddings
+        cos, sin = cos_sin
+        q_global = apply_rotary_emb(q_global, cos, sin)
+        # For keys, we need to select the appropriate positions
+        # Gather cos and sin for the selected indices
+        batch_indices = torch.arange(B, device=x.device).unsqueeze(1).unsqueeze(2).unsqueeze(3).expand(B, k, 1, cos.size(-1))
+        repr_indices_expanded = repr_indices.unsqueeze(2).unsqueeze(3).expand(B, k, 1, cos.size(-1))
+        cos_repr = torch.gather(cos.expand(B, -1, -1, -1), 1, repr_indices_expanded)
+        sin_repr = torch.gather(sin.expand(B, -1, -1, -1), 1, repr_indices_expanded)
+        k_global = apply_rotary_emb(k_global, cos_repr, sin_repr)
+        
+        # Normalize
+        q_global = norm(q_global)
+        k_global = norm(k_global)
+        
+        # Repeat for GQA
+        k_global = k_global.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
+        v_global = v_global.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
+        
+        # Transpose for attention
+        q_global = q_global.transpose(1, 2)  # [B, n_head, T, head_dim]
+        k_global = k_global.transpose(1, 2)  # [B, n_head, k, head_dim]
+        v_global = v_global.transpose(1, 2)  # [B, n_head, k, head_dim]
+        
+        # Compute attention (no causal mask for global tokens)
+        global_context = F.scaled_dot_product_attention(q_global, k_global, v_global, is_causal=False)
+        
+        return global_context  # [B, n_head, T, head_dim]
+
+    def compute_local_attention(self, x, ve, cos_sin):
+        """
+        Compute standard local causal attention.
+        """
         B, T, C = x.size()
         
         q = self.c_q(x).view(B, T, self.n_head, self.head_dim)
@@ -160,11 +196,57 @@ class CausalSelfAttention(nn.Module):
         k = k.transpose(1, 2)
         v = v.transpose(1, 2)
         
-        # Standard causal attention
-        y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        # Compute local causal attention
+        local_context = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        
+        return local_context  # [B, n_head, T, head_dim]
+
+    def forward(self, x, ve, cos_sin, window_size):
+        B, T, C = x.size()
+        
+        if self.config.use_hierarchical_attention:
+            # Compute global attention
+            global_context = self.global_attention(x, cos_sin)  # [B, n_head, T, head_dim]
+            
+            # Compute local attention
+            local_context = self.compute_local_attention(x, ve, cos_sin)  # [B, n_head, T, head_dim]
+            
+            # Compute learnable sparsity weights for local attention
+            sparsity_weights = torch.sigmoid(self.sparsity_gate(x))  # [B, T, n_head]
+            sparsity_weights = sparsity_weights.transpose(1, 2).unsqueeze(-1)  # [B, n_head, T, 1]
+            
+            # Combine global and local attention with learned sparsity
+            # Local attention is gated by sparsity, global provides base context
+            y = global_context + sparsity_weights * local_context
+            
+        else:
+            # Standard attention path
+            q = self.c_q(x).view(B, T, self.n_head, self.head_dim)
+            k = self.c_k(x).view(B, T, self.n_kv_head, self.head_dim)
+            v = self.c_v(x).view(B, T, self.n_kv_head, self.head_dim)
+            
+            if ve is not None:
+                ve = ve.view(B, T, self.n_kv_head, self.head_dim)
+                gate = 2 * torch.sigmoid(self.ve_gate(x[..., : self.ve_gate_channels]))
+                v = v + gate.unsqueeze(-1) * ve
+            
+            cos, sin = cos_sin
+            q = apply_rotary_emb(q, cos, sin)
+            k = apply_rotary_emb(k, cos, sin)
+            
+            q = norm(q)
+            k = norm(k)
+            
+            k = k.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
+            v = v.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
+            
+            q = q.transpose(1, 2)
+            k = k.transpose(1, 2)
+            v = v.transpose(1, 2)
+            
+            y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
         
         y = y.transpose(1, 2).contiguous().view(B, T, C)
-        
         y = self.c_proj(y)
         
         return y
