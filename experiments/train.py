@@ -40,13 +40,8 @@ class GPTConfig:
     n_kv_head: int = 6
     n_embd: int = 768
     window_pattern: str = "SSSL"
-    trm_hidden_dim: int = 128
-    static_attention_threshold: float = 0.5
-    dynamic_weight_enabled: bool = True
+    local_window_size: int = 256
     num_global_tokens: int = 64
-    use_hierarchical_attention: bool = True
-    max_dynamic_heads: int = 6
-    importance_threshold: float = 0.5
 
 
 def norm(x):
@@ -79,9 +74,21 @@ class CausalSelfAttention(nn.Module):
         assert self.n_embd % self.n_head == 0
         assert self.n_kv_head <= self.n_head and self.n_head % self.n_kv_head == 0
         
-        self.c_q = nn.Linear(self.n_embd, self.n_head * self.head_dim, bias=False)
-        self.c_k = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
-        self.c_v = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
+        # Global attention components
+        self.c_q_global = nn.Linear(self.n_embd, self.n_head * self.head_dim, bias=False)
+        self.c_k_global = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
+        self.c_v_global = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
+        
+        # Local attention components
+        self.c_q_local = nn.Linear(self.n_embd, self.n_head * self.head_dim, bias=False)
+        self.c_k_local = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
+        self.c_v_local = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
+        
+        # Aliases for init_weights compatibility
+        self.c_q = self.c_q_global
+        self.c_k = self.c_k_global
+        self.c_v = self.c_v_global
+        
         self.c_proj = nn.Linear(self.n_embd, self.n_embd, bias=False)
         
         self.ve_gate_channels = 32
@@ -89,88 +96,90 @@ class CausalSelfAttention(nn.Module):
             nn.Linear(self.ve_gate_channels, self.n_kv_head, bias=False) if has_ve(layer_idx, config.n_layer) else None
         )
         
-        # Token importance network for dynamic head allocation
-        self.token_importance_net = nn.Linear(self.n_embd, 1, bias=False)
-        
-        # Head allocation network - outputs per-head importance scores
-        self.head_allocation_net = nn.Linear(self.n_embd, self.n_head, bias=False)
-
-    def compute_token_importance(self, x):
-        """
-        Compute importance scores for each token.
-        Returns: [B, T] tensor of importance scores
-        """
-        B, T, C = x.size()
-        importance = self.token_importance_net(x).squeeze(-1)  # [B, T]
-        importance = torch.sigmoid(importance)
-        return importance
-
-    def allocate_heads(self, x):
-        """
-        Dynamically allocate which heads to use based on token importance.
-        Returns: [B, T, n_head] binary mask indicating active heads
-        """
-        B, T, C = x.size()
-        
-        # Compute per-token, per-head allocation scores
-        head_scores = self.head_allocation_net(x)  # [B, T, n_head]
-        head_scores = torch.sigmoid(head_scores)
-        
-        # Threshold to create binary mask
-        threshold = self.config.importance_threshold
-        head_mask = (head_scores > threshold).float()
-        
-        # Ensure at least one head is active per token
-        max_scores = head_scores.max(dim=-1, keepdim=True)[0]
-        fallback_mask = (head_scores >= max_scores).float()
-        head_mask = torch.maximum(head_mask, fallback_mask)
-        
-        return head_mask  # [B, T, n_head]
+        # Learnable weights to combine global and local attention outputs
+        self.combine_weights = nn.Parameter(torch.ones(1, 1, 2))
 
     def forward(self, x, ve, cos_sin, window_size):
         B, T, C = x.size()
         
-        # Compute Q, K, V
-        q = self.c_q(x).view(B, T, self.n_head, self.head_dim)
-        k = self.c_k(x).view(B, T, self.n_kv_head, self.head_dim)
-        v = self.c_v(x).view(B, T, self.n_kv_head, self.head_dim)
+        # === Global Attention ===
+        q_global = self.c_q_global(x).view(B, T, self.n_head, self.head_dim)
+        k_global = self.c_k_global(x).view(B, T, self.n_kv_head, self.head_dim)
+        v_global = self.c_v_global(x).view(B, T, self.n_kv_head, self.head_dim)
         
-        # Apply value embedding if present
+        # Apply value embedding if present (global)
         if ve is not None:
-            ve = ve.view(B, T, self.n_kv_head, self.head_dim)
+            ve_reshaped = ve.view(B, T, self.n_kv_head, self.head_dim)
             gate = 2 * torch.sigmoid(self.ve_gate(x[..., : self.ve_gate_channels]))
-            v = v + gate.unsqueeze(-1) * ve
+            v_global = v_global + gate.unsqueeze(-1) * ve_reshaped
         
-        # Apply rotary embeddings
+        # Apply rotary embeddings (global)
         cos, sin = cos_sin
-        q = apply_rotary_emb(q, cos, sin)
-        k = apply_rotary_emb(k, cos, sin)
+        q_global = apply_rotary_emb(q_global, cos, sin)
+        k_global = apply_rotary_emb(k_global, cos, sin)
         
-        # Normalize
-        q = norm(q)
-        k = norm(k)
+        # Normalize (global)
+        q_global = norm(q_global)
+        k_global = norm(k_global)
         
-        # Repeat K, V for GQA
-        k = k.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
-        v = v.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
+        # Repeat K, V for GQA (global)
+        k_global = k_global.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
+        v_global = v_global.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
         
-        # Transpose for attention
-        q = q.transpose(1, 2)  # [B, n_head, T, head_dim]
-        k = k.transpose(1, 2)
-        v = v.transpose(1, 2)
+        # Transpose for attention (global)
+        q_global = q_global.transpose(1, 2)
+        k_global = k_global.transpose(1, 2)
+        v_global = v_global.transpose(1, 2)
         
-        # Compute dynamic head allocation mask
-        head_mask = self.allocate_heads(x)  # [B, T, n_head]
-        head_mask = head_mask.transpose(1, 2).unsqueeze(-1)  # [B, n_head, T, 1]
+        # Compute global attention
+        y_global = F.scaled_dot_product_attention(q_global, k_global, v_global, is_causal=True)
+        y_global = y_global.transpose(1, 2).contiguous().view(B, T, C)
         
-        # Compute attention
-        y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        # === Local Attention ===
+        q_local = self.c_q_local(x).view(B, T, self.n_head, self.head_dim)
+        k_local = self.c_k_local(x).view(B, T, self.n_kv_head, self.head_dim)
+        v_local = self.c_v_local(x).view(B, T, self.n_kv_head, self.head_dim)
         
-        # Apply dynamic head mask
-        y = y * head_mask
+        # Apply value embedding if present (local)
+        if ve is not None:
+            ve_reshaped = ve.view(B, T, self.n_kv_head, self.head_dim)
+            gate = 2 * torch.sigmoid(self.ve_gate(x[..., : self.ve_gate_channels]))
+            v_local = v_local + gate.unsqueeze(-1) * ve_reshaped
         
-        # Transpose back and project
-        y = y.transpose(1, 2).contiguous().view(B, T, C)
+        # Apply rotary embeddings (local)
+        q_local = apply_rotary_emb(q_local, cos, sin)
+        k_local = apply_rotary_emb(k_local, cos, sin)
+        
+        # Normalize (local)
+        q_local = norm(q_local)
+        k_local = norm(k_local)
+        
+        # Repeat K, V for GQA (local)
+        k_local = k_local.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
+        v_local = v_local.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
+        
+        # Transpose for attention (local)
+        q_local = q_local.transpose(1, 2)
+        k_local = k_local.transpose(1, 2)
+        v_local = v_local.transpose(1, 2)
+        
+        # Create local attention mask (sliding window)
+        local_window = self.config.local_window_size
+        attn_mask = torch.ones(T, T, dtype=torch.bool, device=x.device).tril()
+        for i in range(T):
+            start = max(0, i - local_window + 1)
+            if start > 0:
+                attn_mask[i, :start] = False
+        
+        # Compute local attention with window mask
+        y_local = F.scaled_dot_product_attention(q_local, k_local, v_local, attn_mask=attn_mask)
+        y_local = y_local.transpose(1, 2).contiguous().view(B, T, C)
+        
+        # === Combine Global and Local ===
+        weights = F.softmax(self.combine_weights, dim=-1)
+        y = weights[..., 0] * y_global + weights[..., 1] * y_local
+        
+        # Project output
         y = self.c_proj(y)
         
         return y
