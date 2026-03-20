@@ -686,20 +686,22 @@ def run_loop(
             val_bpb, status, cost_this_cycle, cost_tracker.total_cost,
         )
 
-        # Commit results files and push to GitHub
+        # Commit results files and push to GitHub every 10 experiments
         try:
             git.commit(
                 f"Results: experiment {iteration} — {status} (val_bpb={val_bpb:.6f if val_bpb else 'N/A'})",
                 files=[str(RESULTS_TSV), str(EXPERIMENT_LOG)],
             )
-            subprocess.run(
-                ["git", "push"],
-                capture_output=True,
-                timeout=30,
-                cwd=str(PROJECT_ROOT),
-            )
+            if iteration % 10 == 0:
+                print("  Pushing results to GitHub...")
+                subprocess.run(
+                    ["git", "push"],
+                    capture_output=True,
+                    timeout=30,
+                    cwd=str(PROJECT_ROOT),
+                )
         except Exception as e:
-            print(f"  Warning: git push failed: {e}")
+            print(f"  Warning: git commit/push failed: {e}")
 
         # Update guards
         guards.record_result(val_bpb, status, result.proposal.hypothesis)
@@ -710,6 +712,18 @@ def run_loop(
         # Status
         print(f"  {guards.summary()}")
         print(f"  {cost_tracker.summary()}")
+
+    # Final push to GitHub
+    try:
+        subprocess.run(
+            ["git", "push"],
+            capture_output=True,
+            timeout=30,
+            cwd=str(PROJECT_ROOT),
+        )
+        print("Final results pushed to GitHub.")
+    except Exception:
+        print("Warning: final git push failed.")
 
     # Final summary
     print(f"\nFinal: {guards.summary()}")
