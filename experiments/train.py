@@ -41,6 +41,8 @@ class GPTConfig:
     n_embd: int = 768
     window_pattern: str = "SSSL"
     trm_hidden_dim: int = 128
+    static_attention_threshold: float = 0.5
+    dynamic_weight_enabled: bool = True
 
 
 def norm(x):
@@ -61,6 +63,36 @@ def apply_rotary_emb(x, cos, sin):
     return torch.cat([y1, y2], 3)
 
 
+def calculate_static_attention_mask(idx, threshold):
+    """
+    Compute a static attention mask based on token frequency/importance.
+    Returns a [B, T, T] mask where important tokens get higher weights.
+    """
+    B, T = idx.size()
+    device = idx.device
+    
+    # Compute token importance based on frequency in the sequence
+    # For each position, count how many times each token appears
+    token_counts = torch.zeros(B, T, device=device, dtype=torch.float32)
+    
+    for i in range(T):
+        token = idx[:, i:i+1]  # [B, 1]
+        matches = (idx == token).float()  # [B, T]
+        token_counts[:, i] = matches.sum(dim=1)
+    
+    # Normalize to [0, 1] range per sequence
+    token_counts = token_counts / (T + 1e-8)
+    
+    # Create importance mask: [B, T]
+    importance = (token_counts >= threshold).float()
+    
+    # Expand to attention mask shape [B, T, T]
+    # Each query position attends more to important key positions
+    static_mask = importance.unsqueeze(1).expand(B, T, T)
+    
+    return static_mask
+
+
 class CausalSelfAttention(nn.Module):
     def __init__(self, config, layer_idx):
         super().__init__()
@@ -68,6 +100,7 @@ class CausalSelfAttention(nn.Module):
         self.n_kv_head = config.n_kv_head
         self.n_embd = config.n_embd
         self.head_dim = self.n_embd // self.n_head
+        self.config = config
         assert self.n_embd % self.n_head == 0
         assert self.n_kv_head <= self.n_head and self.n_head % self.n_kv_head == 0
         
@@ -80,6 +113,26 @@ class CausalSelfAttention(nn.Module):
         self.ve_gate = (
             nn.Linear(self.ve_gate_channels, self.n_kv_head, bias=False) if has_ve(layer_idx, config.n_layer) else None
         )
+        
+        # Dynamic weight computation for hybrid attention
+        if config.dynamic_weight_enabled:
+            self.dynamic_weight_proj = nn.Linear(self.n_embd, self.n_head, bias=False)
+
+    def compute_dynamic_weight(self, x):
+        """
+        Compute dynamic weight to balance learned and static attention.
+        Returns [B, n_head, T, 1] weights.
+        """
+        B, T, C = x.size()
+        
+        # Project to per-head weights
+        weights = self.dynamic_weight_proj(x)  # [B, T, n_head]
+        weights = torch.sigmoid(weights)  # Normalize to [0, 1]
+        
+        # Reshape to [B, n_head, T, 1] for broadcasting
+        weights = weights.transpose(1, 2).unsqueeze(-1)
+        
+        return weights
 
     def forward(self, x, ve, cos_sin, window_size):
         B, T, C = x.size()
@@ -103,10 +156,11 @@ class CausalSelfAttention(nn.Module):
         k = k.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
         v = v.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
         
-        q = q.transpose(1, 2)
+        q = q.transpose(1, 2)  # [B, n_head, T, head_dim]
         k = k.transpose(1, 2)
         v = v.transpose(1, 2)
         
+        # Standard causal attention
         y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
         
         y = y.transpose(1, 2).contiguous().view(B, T, C)
