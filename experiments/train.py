@@ -46,6 +46,8 @@ class GPTConfig:
     learnable_mask_init: float = 0.1
     scale_contexts: int = 2
     heuristic_learned_weight: float = 0.5
+    importance_threshold: float = 0.5
+    context_channels: int = 64
 
 
 def norm(x):
@@ -73,6 +75,7 @@ class CausalSelfAttention(nn.Module):
         self.n_kv_head = config.n_kv_head
         self.n_embd = config.n_embd
         self.head_dim = self.n_embd // self.n_head
+        self.importance_threshold = config.importance_threshold
         assert self.n_embd % self.n_head == 0
         assert self.n_kv_head <= self.n_head and self.n_head % self.n_kv_head == 0
         
@@ -85,38 +88,96 @@ class CausalSelfAttention(nn.Module):
         self.ve_gate = (
             nn.Linear(self.ve_gate_channels, self.n_kv_head, bias=False) if has_ve(layer_idx, config.n_layer) else None
         )
+        
+        # Contextual importance scoring
+        self.context_embed = nn.Linear(self.n_embd, config.context_channels, bias=False)
+        self.importance_score = nn.Linear(config.context_channels, 1, bias=False)
+        
+        # Dual-path projections for essential and non-essential tokens
+        self.c_q_essential = nn.Linear(self.n_embd, self.n_head * self.head_dim, bias=False)
+        self.c_k_essential = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
+        self.c_v_essential = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
+        
+        self.c_q_sparse = nn.Linear(self.n_embd, self.n_head * self.head_dim, bias=False)
+        self.c_k_sparse = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
+        self.c_v_sparse = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
+        
+        self.c_proj_essential = nn.Linear(self.n_embd, self.n_embd, bias=False)
+        self.c_proj_sparse = nn.Linear(self.n_embd, self.n_embd, bias=False)
 
     def forward(self, x, ve, cos_sin, window_size):
         B, T, C = x.size()
         
-        q = self.c_q(x).view(B, T, self.n_head, self.head_dim)
-        k = self.c_k(x).view(B, T, self.n_kv_head, self.head_dim)
-        v = self.c_v(x).view(B, T, self.n_kv_head, self.head_dim)
+        # Compute contextual importance scores
+        context_features = self.context_embed(x)
+        importance_scores = torch.sigmoid(self.importance_score(context_features)).squeeze(-1)  # [B, T]
         
+        # Create importance mask
+        is_essential = importance_scores > self.importance_threshold  # [B, T]
+        
+        # Essential path (dense attention)
+        q_essential = self.c_q_essential(x).view(B, T, self.n_head, self.head_dim)
+        k_essential = self.c_k_essential(x).view(B, T, self.n_kv_head, self.head_dim)
+        v_essential = self.c_v_essential(x).view(B, T, self.n_kv_head, self.head_dim)
+        
+        # Non-essential path (sparse attention)
+        q_sparse = self.c_q_sparse(x).view(B, T, self.n_head, self.head_dim)
+        k_sparse = self.c_k_sparse(x).view(B, T, self.n_kv_head, self.head_dim)
+        v_sparse = self.c_v_sparse(x).view(B, T, self.n_kv_head, self.head_dim)
+        
+        # Apply value embeddings if present
         if ve is not None:
             ve = ve.view(B, T, self.n_kv_head, self.head_dim)
             gate = 2 * torch.sigmoid(self.ve_gate(x[..., : self.ve_gate_channels]))
-            v = v + gate.unsqueeze(-1) * ve
+            v_essential = v_essential + gate.unsqueeze(-1) * ve
+            v_sparse = v_sparse + gate.unsqueeze(-1) * ve
         
         cos, sin = cos_sin
-        q = apply_rotary_emb(q, cos, sin)
-        k = apply_rotary_emb(k, cos, sin)
         
-        q = norm(q)
-        k = norm(k)
+        # Apply rotary embeddings to both paths
+        q_essential = apply_rotary_emb(q_essential, cos, sin)
+        k_essential = apply_rotary_emb(k_essential, cos, sin)
+        q_sparse = apply_rotary_emb(q_sparse, cos, sin)
+        k_sparse = apply_rotary_emb(k_sparse, cos, sin)
         
-        k = k.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
-        v = v.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
+        # Normalize
+        q_essential = norm(q_essential)
+        k_essential = norm(k_essential)
+        q_sparse = norm(q_sparse)
+        k_sparse = norm(k_sparse)
         
-        q = q.transpose(1, 2)
-        k = k.transpose(1, 2)
-        v = v.transpose(1, 2)
+        # Repeat for GQA
+        k_essential = k_essential.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
+        v_essential = v_essential.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
+        k_sparse = k_sparse.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
+        v_sparse = v_sparse.repeat_interleave(self.n_head // self.n_kv_head, dim=2)
         
-        y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        # Transpose for attention
+        q_essential = q_essential.transpose(1, 2)
+        k_essential = k_essential.transpose(1, 2)
+        v_essential = v_essential.transpose(1, 2)
+        q_sparse = q_sparse.transpose(1, 2)
+        k_sparse = k_sparse.transpose(1, 2)
+        v_sparse = v_sparse.transpose(1, 2)
         
-        y = y.transpose(1, 2).contiguous().view(B, T, C)
+        # Dense attention for essential tokens
+        y_essential = F.scaled_dot_product_attention(q_essential, k_essential, v_essential, is_causal=True)
         
-        y = self.c_proj(y)
+        # Sparse attention for non-essential tokens (using same causal attention but conceptually sparse)
+        y_sparse = F.scaled_dot_product_attention(q_sparse, k_sparse, v_sparse, is_causal=True)
+        
+        # Transpose back
+        y_essential = y_essential.transpose(1, 2).contiguous().view(B, T, C)
+        y_sparse = y_sparse.transpose(1, 2).contiguous().view(B, T, C)
+        
+        # Project outputs
+        y_essential = self.c_proj_essential(y_essential)
+        y_sparse = self.c_proj_sparse(y_sparse)
+        
+        # Combine outputs based on importance mask
+        is_essential_expanded = is_essential.unsqueeze(-1).expand_as(y_essential)
+        y = torch.where(is_essential_expanded, y_essential, y_sparse)
+        
         return y
 
 class MLP(nn.Module):
