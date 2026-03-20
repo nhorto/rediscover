@@ -45,6 +45,7 @@ class GPTConfig:
     gating: bool = True
     learnable_mask_init: float = 0.1
     scale_contexts: int = 2
+    heuristic_learned_weight: float = 0.5
 
 
 def norm(x):
@@ -72,6 +73,7 @@ class CausalSelfAttention(nn.Module):
         self.n_kv_head = config.n_kv_head
         self.n_embd = config.n_embd
         self.head_dim = self.n_embd // self.n_head
+        self.heuristic_learned_weight = config.heuristic_learned_weight
         assert self.n_embd % self.n_head == 0
         assert self.n_kv_head <= self.n_head and self.n_head % self.n_kv_head == 0
         
@@ -85,7 +87,7 @@ class CausalSelfAttention(nn.Module):
             nn.Linear(self.ve_gate_channels, self.n_kv_head, bias=False) if has_ve(layer_idx, config.n_layer) else None
         )
         
-        self.importance_net = nn.Linear(self.n_embd, self.n_head, bias=False)
+        self.relevance_net = nn.Linear(self.n_embd, self.n_head, bias=False)
         
         self.learnable_mask = nn.Parameter(
             torch.ones(1, self.n_head) * config.learnable_mask_init
@@ -117,13 +119,20 @@ class CausalSelfAttention(nn.Module):
         k = k.transpose(1, 2)
         v = v.transpose(1, 2)
         
-        importance_scores = self.importance_net(x)
-        importance_scores = torch.sigmoid(importance_scores)
-        importance_scores = importance_scores.transpose(1, 2).unsqueeze(-1)
+        learned_relevance = self.relevance_net(x)
+        learned_relevance = torch.sigmoid(learned_relevance)
+        learned_relevance = learned_relevance.transpose(1, 2).unsqueeze(-1)
+        
+        heuristic_relevance = torch.ones_like(learned_relevance)
+        
+        combined_relevance = (
+            self.heuristic_learned_weight * heuristic_relevance + 
+            (1.0 - self.heuristic_learned_weight) * learned_relevance
+        )
         
         y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
         
-        y = y * importance_scores
+        y = y * combined_relevance
         
         mask_weight = self.learnable_mask.view(1, self.n_head, 1, 1)
         y = y * (1.0 + mask_weight)
