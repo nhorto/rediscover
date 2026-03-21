@@ -1124,3 +1124,26 @@ The outputs from both pathways will be combined through a weighted sum, where th
 **Cost this cycle:** $0.0837
 **Cumulative cost:** $3.4886
 ---
+
+## Experiment 53 — 2026-03-20 20:06:13
+**Hypothesis:** I hypothesize that introducing a dynamic context-based attention mechanism, which adapts the attention weights not only based on the token relevance but also on the contextual similarity of tokens across different layers, can significantly improve the efficiency and effectiveness of the attention mechanism. This approach builds on the idea that attention may be overly reliant on immediate token interactions and does not account for how the meaning of tokens evolves through the layers of the network.
+**Approach:** The proposed mechanism involves creating a context-aware attention score that integrates both the traditional attention weights and a similarity measure derived from the hidden states of previous layers. Specifically, for each token, we compute a context vector based on the average or sum of the hidden states of relevant tokens from previous layers. This context vector will then be used to modulate the attention weights dynamically. The attention score for each token will be a function of both the query-key interactions and this context vector, thus creating a compound score that reflects both local and contextual information.
+
+1. **Context Vector Calculation**: For each token \( t \), compute a context vector \( C_t \) as the mean of the hidden states of all tokens in the previous layer, weighted by their relevance according to the attention scores from that layer.
+   
+2. **Attention Score Modification**: Instead of using the raw dot product to compute the attention scores, use a modified formula:
+   \[
+   A_{i,j} = \text{softmax}\left(\frac{Q_i K_j^T + \lambda \cdot (Q_i \cdot C_j)}{\sqrt{d_k}}\right)
+   \]
+   where \( \lambda \) is a learnable parameter that adjusts the influence of the context vector \( C_j \) on the attention scores.
+
+3. **Layer-Wise Adaptation**: The context vectors can be updated dynamically based on the current layer's output, allowing the model to learn more nuanced relationships between tokens across layers.
+
+This approach is novel because it draws on the idea of contextualizing attention in a way that hasn't been explicitly explored in traditional transformer architectures. Most attention mechanisms focus solely on pairwise interactions, whereas this method integrates layer-wise context to refine those interactions.
+**Papers consulted:** Reproduction Report on "Learn to Pay Attention", Which Transformer to Favor: A Comparative Analysis of Effici, Gated recurrent neural networks discover attention
+**Critique:** The proposal presents an interesting approach to enhance attention mechanisms by integrating context across layers. However, it may lack originality and sufficient theoretical backing to support the e
+**Plan:** This experiment conducts a preliminary ablation study to evaluate the contribution of the context vector and modified attention scores separately, while exploring variations of the proposed mechanism to enhance originality and address the critique regarding the model's complexity.
+**Result:** val_bpb=1.170853 (discard)
+**Cost this cycle:** $0.0658
+**Cumulative cost:** $3.8794
+---

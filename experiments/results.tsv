@@ -77,3 +77,4 @@ reverted	1.846856	0.0	discard	DISCARD: This experiment aims to implement the Con
 reverted	1.174729	0.0	discard	DISCARD: This experiment implements a Hierarchical Sparse Attention M (val_bpb=1.174729)
 reverted	1.185925	0.0	discard	DISCARD: This experiment implements the Multi-Granularity Attention ( (val_bpb=1.185925)
 reverted	1.170225	0.0	discard	DISCARD: This experiment implements a more robust Dynamic Importance  (val_bpb=1.170225)
+reverted	1.170853	0.0	discard	DISCARD: This experiment conducts a preliminary ablation study to eva (val_bpb=1.170853)
