@@ -78,3 +78,11 @@ reverted	1.174729	0.0	discard	DISCARD: This experiment implements a Hierarchical
 reverted	1.185925	0.0	discard	DISCARD: This experiment implements the Multi-Granularity Attention ( (val_bpb=1.185925)
 reverted	1.170225	0.0	discard	DISCARD: This experiment implements a more robust Dynamic Importance  (val_bpb=1.170225)
 reverted	1.170853	0.0	discard	DISCARD: This experiment conducts a preliminary ablation study to eva (val_bpb=1.170853)
+reverted	1.171834	0.0	discard	DISCARD: This experiment implements a novel, robust head specializati (val_bpb=1.171834)
+reverted	1.846086	0.0	discard	DISCARD: This experiment implements a new static key-value optimizati (val_bpb=1.846086)
+reverted	N/A	0.0	crash	CRASH: This experiment proposes an entirely new attention mechanism
+reverted	1.177388	0.0	discard	DISCARD: This experiment implements a layer-dependent attention norma (val_bpb=1.177388)
+reverted	1.186709	0.0	discard	DISCARD: This experiment refines the proposal by clearly delineating  (val_bpb=1.186709)
+reverted	1.174177	0.0	discard	DISCARD: This experiment introduces a novel gating mechanism that emp (val_bpb=1.174177)
+reverted	1.172460	0.0	discard	DISCARD: This experiment implements a novel two-stage attention mecha (val_bpb=1.172460)
+reverted	1.161152	0.0	discard	DISCARD: This experiment introduces a novel multi-scale attention mec (val_bpb=1.161152)
